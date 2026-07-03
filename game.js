@@ -17,6 +17,7 @@ const upgradeEl = document.getElementById("upgrade");
 const upgradeCards = document.getElementById("upgradeCards");
 const upgradeHint = document.getElementById("upgradeHint");
 const muteBtn = document.getElementById("muteBtn");
+const pauseBtn = document.getElementById("pauseBtn");
 
 const W = canvas.width, H = canvas.height;
 const horizonY = 150;
@@ -49,6 +50,8 @@ const sfx = {
 function startBeat() { if (beatTimer) return; let step = 0; beatTimer = setInterval(() => { if (!actx || muted) return; if (step % 4 === 0) tone(64, 0.13, "sine", 0.28); if (step % 2 === 1) nz(0.03, 0.05); step = (step + 1) % 8; }, 210); }
 function toggleMute() { muted = !muted; if (master) master.gain.value = muted ? 0 : 0.45; muteBtn.textContent = muted ? "♪̸" : "♪"; muteBtn.classList.toggle("off", muted); }
 muteBtn.addEventListener("click", toggleMute);
+function syncPauseIcon() { if (pauseBtn) pauseBtn.textContent = (state === "playing") ? "⏸" : "▶"; }
+pauseBtn.addEventListener("click", () => { initAudio(); togglePause(); });
 
 // ============================================================
 //  武器 / 载具 / 敌人类型
@@ -155,7 +158,7 @@ function resetGame() {
   combo = 0; comboTimer = 0; bannerTime = 0;
   updateHud();
 }
-function startGame() { resetGame(); state = "playing"; overlay.classList.add("hidden"); lastTime = performance.now(); banner("WAVE 1", 1.4); initAudio(); }
+function startGame() { resetGame(); state = "playing"; overlay.classList.add("hidden"); lastTime = performance.now(); banner("WAVE 1", 1.4); initAudio(); syncPauseIcon(); }
 function gameOver() { state = "gameover"; messageEl.innerHTML = `阵地失守！<br>最终得分 <b style="color:#ffe14a">${score}</b>　撑到第 ${wave} 波`; startBtn.textContent = "继续战斗"; overlay.classList.remove("hidden"); }
 const weapon = () => WEAPONS[player.weaponLevel];
 const vehicle = () => VEHICLES[player.vehicleLevel];
@@ -356,7 +359,12 @@ function movePlayer(dt) {
   const spd = player.speed * moveMul();
   if (pointerActive) {
     const dx = pointerTarget.x - player.x, dy = pointerTarget.y - player.y, d = Math.hypot(dx, dy);
-    if (d > 1) { const step = Math.min(d, spd * dt); player.x += dx / d * step; player.y += dy / d * step; player.moving = true; }
+    if (d > 3) {
+      const k = 1 - Math.exp(-20 * moveMul() * dt);  // 平滑跟手；载具/移速buff → 更跟手
+      player.x += dx * k; player.y += dy * k; player.moving = true;
+    } else if (d > 0.5) {
+      player.x = pointerTarget.x; player.y = pointerTarget.y;  // 近距离吸附防抖
+    }
   } else {
     let dx = 0, dy = 0;
     if (keys.has("arrowleft") || keys.has("a")) dx -= 1;
@@ -840,8 +848,12 @@ function draw() {
 //  主循环 / 输入
 // ============================================================
 function loop(now) { const dt = Math.min(0.033, (now - lastTime) / 1000 || 0); lastTime = now; update(dt); draw(); requestAnimationFrame(loop); }
-function togglePause() { if (state === "playing") { state = "menu"; messageEl.innerHTML = "已暂停。点击按钮继续。"; startBtn.textContent = "继续"; overlay.classList.remove("hidden"); } else if (state === "menu") { state = "playing"; overlay.classList.add("hidden"); lastTime = performance.now(); } }
-startBtn.addEventListener("click", () => { initAudio(); if (state === "menu" && startBtn.textContent === "继续") { state = "playing"; overlay.classList.add("hidden"); lastTime = performance.now(); } else startGame(); });
+function togglePause() {
+  if (state === "playing") { state = "menu"; messageEl.innerHTML = "已暂停。点击按钮继续。"; startBtn.textContent = "继续"; overlay.classList.remove("hidden"); }
+  else if (state === "menu") { state = "playing"; overlay.classList.add("hidden"); lastTime = performance.now(); }
+  syncPauseIcon();
+}
+startBtn.addEventListener("click", () => { initAudio(); if (state === "menu" && startBtn.textContent === "继续") { state = "playing"; overlay.classList.add("hidden"); lastTime = performance.now(); syncPauseIcon(); } else startGame(); });
 window.addEventListener("keydown", (e) => { const k = e.key.toLowerCase(); if (["arrowleft", "arrowright", "arrowup", "arrowdown", " "].includes(k)) e.preventDefault(); if (k === "m") { toggleMute(); return; } if (k === " " && (state === "playing" || state === "menu")) { togglePause(); return; } keys.add(k); initAudio(); });
 window.addEventListener("keyup", (e) => keys.delete(e.key.toLowerCase()));
 function pointerXY(ev) { const r = canvas.getBoundingClientRect(); return { x: ((ev.clientX - r.left) / r.width) * W, y: ((ev.clientY - r.top) / r.height) * H }; }
