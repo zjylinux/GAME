@@ -1,0 +1,47 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <title>丛林野人突击 · 街机</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="shell">
+    <section class="arena" aria-label="丛林野人突击游戏区域">
+      <div class="hud" id="hud">
+        <div class="hud-score"><span>SCORE</span><strong id="score">0</strong></div>
+        <div class="hud-wave"><span>WAVE</span><strong id="wave">1</strong></div>
+        <div class="hud-stat"><span>武器</span><strong id="weapon">手枪</strong></div>
+        <div class="hud-stat"><span>同伴</span><strong id="squad">1</strong></div>
+        <div class="hud-life"><span>LIFE</span><div class="pips" id="pips"></div></div>
+        <button id="muteBtn" class="mute" type="button" title="静音 (M)">♪</button>
+      </div>
+
+      <div class="stage">
+        <canvas id="game" width="720" height="1180"></canvas>
+
+        <div id="overlay" class="overlay">
+          <div class="panel">
+            <p class="eyebrow">ARCADE · JUNGLE STRIKE</p>
+            <h1>丛林野人突击</h1>
+            <p id="message">野人从丛林深处冲来！守住阵地，连击得分，撑过每一任酋长。</p>
+            <button id="startBtn" type="button">开始作战</button>
+            <p class="tips">A / ← 左移　D / → 右移　空格暂停　M 静音<br>触屏：左右拖动控制移动</p>
+          </div>
+        </div>
+
+        <div id="upgrade" class="overlay hidden">
+          <div class="upgrade-panel">
+            <p class="upgrade-title">选择强化</p>
+            <div class="upgrade-cards" id="upgradeCards"></div>
+            <p class="upgrade-hint" id="upgradeHint"></p>
+          </div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <script src="game.js"></script>
+</body>
+</html>
