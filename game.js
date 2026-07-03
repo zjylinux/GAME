@@ -83,6 +83,30 @@ const TYPES = {
 };
 const ENEMY_SCALE = 1.0;
 const DMG_HIT = 34, DMG_EXPLODE = 55, DMG_SLAM = 46, DMG_BOSS = 60;
+const BOSS_NAMES = ["酋长", "巨猿王", "巫毒领主", "丛林巨蛇"];
+const MODIFIERS = [
+  { id: "frenzy",  name: "加速日", desc: "敌人速度+40% 分数+50%", apply: m => { m.speedMul *= 1.4; m.scoreMul *= 1.5; } },
+  { id: "night",   name: "黑夜", desc: "视野缩小 分数+30%", apply: m => { m.dark += 0.5; m.scoreMul *= 1.3; } },
+  { id: "elite",   name: "精英潮", desc: "25%敌人变精英 奖励x2", apply: m => { m.eliteChance = 0.25; } },
+  { id: "harvest", name: "丰收", desc: "升级四选一", apply: m => { m.choices = 4; } },
+  { id: "ironhide",name: "铜墙", desc: "所有敌人自带护盾", apply: m => { m.shieldAll = true; } },
+  { id: "rage",    name: "狂暴", desc: "敌人全程暴怒 速度x1.6", apply: m => { m.rage = true; m.speedMul *= 1.15; } },
+  { id: "fog",     name: "迷雾", desc: "浓雾遮罩 分数+25%", apply: m => { m.fog += 0.5; m.scoreMul *= 1.25; } },
+  { id: "swarm",   name: "蛮群", desc: "刷怪x1.8 敌人血-30%", apply: m => { m.spawnMul *= 1.8; m.hpMul *= 0.7; } }
+];
+function baseMod() { return { speedMul: 1, hpMul: 1, scoreMul: 1, spawnMul: 1, choices: 3, dark: 0, fog: 0, eliteChance: 0, shieldAll: false, rage: false, name: null, desc: null }; }
+let lastModId = null;
+function rollMod() { const m = baseMod(); const pool = MODIFIERS.filter(x => x.id !== lastModId); const pk = pool[Math.floor(Math.random() * pool.length)]; lastModId = pk.id; pk.apply(m); m.name = pk.name; m.desc = pk.desc; return m; }
+const BIOMES = [
+  { name: "丛林", sky: ["#2a78d4", "#6fb4e8", "#cfe8f5"], sun: "#fff8dc", glow: "rgba(255,250,220,0.95)", ground: "#2c5a22", dirt: ["#6a4a26", "#4a3219"], palm: "#3f7a2a", canopy1: "#3a6a4a", canopy2: "#2a5a32", canopy3: "#2f6a26", ambient: "leaves", haze: "rgba(200,230,200,0.45)", dark: 0 },
+  { name: "沼泽", sky: ["#3a4a3a", "#5a6a4a", "#8a9a6a"], sun: "#c0c8a0", glow: "rgba(200,210,170,0.6)", ground: "#283a26", dirt: ["#3a3220", "#241e10"], palm: "#3a5a2a", canopy1: "#2a4a3a", canopy2: "#1a3a2a", canopy3: "#1f4a2a", ambient: "rain", haze: "rgba(150,170,130,0.55)", dark: 0.2 },
+  { name: "古遗迹", sky: ["#3a2a5a", "#8a5a3a", "#ffb86a"], sun: "#ffd070", glow: "rgba(255,200,110,0.8)", ground: "#4a4030", dirt: ["#6a5a3a", "#42332a"], palm: "#5a4a2a", canopy1: "#5a4a3a", canopy2: "#4a3a2a", canopy3: "#4a3a2a", ambient: "embers", haze: "rgba(220,180,120,0.4)", dark: 0.1 },
+  { name: "火山夜", sky: ["#1a0a14", "#3a1010", "#6a1a14"], sun: "#ff5a2a", glow: "rgba(255,90,40,0.8)", ground: "#2a1612", dirt: ["#3a1a14", "#1a0a08"], palm: "#3a1a14", canopy1: "#2a1612", canopy2: "#1a0a08", canopy3: "#1f0a0a", ambient: "embers", haze: "rgba(120,30,20,0.5)", dark: 0.35 }
+];
+function biomeIdx() { return Math.floor(upgradesDone / 3) % BIOMES.length; }
+let curBiome = 0;
+function applyBiome() { const nb = biomeIdx(); if (nb !== curBiome) { curBiome = nb; buildGround(); } }
+let waveMod = baseMod();
 
 // ============================================================
 //  RPG Buff 定义
@@ -129,14 +153,14 @@ const player = {
   mods: { explosive: false, burn: false, homing: false, chain: false, lifesteal: false, shield: false, ricochet: false, slow: false },
   revive: 0, drones: 0, specs: {}, shieldT: 0, droneTimer: 0
 };
-const enemies = [], bullets = [], enemyBullets = [], particles = [], floatTexts = [], decals = [], hazards = [], telegraphs = [], bolts = [], shocks = [];
-let score = 0, wave = 1, kills = 0, killTarget = 12, upgradesDone = 0;
+const enemies = [], bullets = [], enemyBullets = [], particles = [], floatTexts = [], decals = [], hazards = [], telegraphs = [], bolts = [], shocks = [], ambient = [];
+let score = 0, wave = 1, kills = 0, killTarget = 12, upgradesDone = 0, bossesDefeated = 0;
 const upgradePerBoss = 3;
 let bossPending = false, bossActive = false, spawnTimer = 0, screenShake = 0;
 let pointerActive = false, muzzle = 0;
 let freezeTimer = 0;
 let combo = 0, comboTimer = 0; const COMBO_WIN = 2.6;
-let bannerText = "", bannerTime = 0, bannerTotal = 1;
+let bannerText = "", bannerTime = 0, bannerTotal = 1, bannerColor = "#ffe14a";
 const keys = new Set();
 let pointerTarget = { x: W / 2, y: playerY };
 
@@ -153,9 +177,10 @@ function resetGame() {
   // 重置武器数值（专精可能改过）
   WEAPONS[0].rate = 0.55; WEAPONS[1].dmg = 2; WEAPONS[1].spread = 0.34; WEAPONS[1].count = 7;
   WEAPONS[2].pierce = 1; WEAPONS[3].count = 1; WEAPONS[5].count = 2; WEAPONS[5].spread = 0.08;
-  score = 0; wave = 1; kills = 0; killTarget = 10; upgradesDone = 0;
+  score = 0; wave = 1; kills = 0; killTarget = 10; upgradesDone = 0; bossesDefeated = 0;
   bossPending = false; bossActive = false; spawnTimer = 2.0; screenShake = 0; freezeTimer = 0;
   combo = 0; comboTimer = 0; bannerTime = 0;
+  waveMod = baseMod(); lastModId = null; ambient.length = 0; curBiome = biomeIdx(); buildGround();
   updateHud();
 }
 function startGame() { resetGame(); state = "playing"; overlay.classList.add("hidden"); lastTime = performance.now(); banner("WAVE 1", 1.4); initAudio(); syncPauseIcon(); }
@@ -201,7 +226,7 @@ function buildChoices() {
   if (SPECS[lvl] && !player.specs[lvl]) pool.push({ tag: "专精·史诗", icon: "★", cls: "epic", name: SPECS[lvl].name, desc: SPECS[lvl].desc, apply: () => { SPECS[lvl].apply(); player.specs[lvl] = true; } });
 
   for (let i = pool.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); [pool[i], pool[j]] = [pool[j], pool[i]]; }
-  return pool.slice(0, 3);
+  return pool.slice(0, waveMod.choices);
 }
 function openUpgrade() {
   state = "upgrade"; sfx.upgrade();
@@ -215,6 +240,8 @@ function applyChoice(o) {
   o.apply(); upgradesDone += 1; kills = 0; killTarget = Math.round(killTarget * 1.25) + 4;
   if (upgradesDone % upgradePerBoss === 0) bossPending = true;
   if (player.life > player.maxLife) player.life = player.maxLife;
+  waveMod = rollMod(); applyBiome();
+  banner("词缀: " + waveMod.name, 1.4, "#b08aff");
   upgradeEl.classList.add("hidden"); updateHud(); state = "playing"; lastTime = performance.now();
   burst(player.x, player.y - 30, "#7afa55", 26);
 }
@@ -232,14 +259,16 @@ function makeEnemy(type, x, y) {
   else if (type === "shielder") base = t.hp + w1 * 0.9 + pressure * 0.4;
   else if (type === "shaman") base = t.hp + w1 * 0.8 + pressure * 0.4;
   else base = t.hp + w1 * 0.55 + pressure * 0.3;
-  const hp = Math.max(1, Math.round(base * (1 + w1 * 0.05 + w1 * w1 * 0.0035)));
-  const e = { type, x, y, hp, maxHp: hp, speed: t.speed + w * 1.4, r: t.r, skin: t.skin, baseScale: t.scale, reward: t.reward, anim: Math.random() * 10, hitFlash: 0, wob: Math.random() * 6, wind: 0, armor: (t.armor || 0) + Math.floor(w / 3), burn: null, slowT: 0 };
+  const hp = Math.max(1, Math.round(base * (1 + w1 * 0.05 + w1 * w1 * 0.0035) * waveMod.hpMul));
+  const e = { type, x, y, hp, maxHp: hp, speed: (t.speed + w * 1.4) * waveMod.speedMul, r: t.r, skin: t.skin, baseScale: t.scale, reward: t.reward, anim: Math.random() * 10, hitFlash: 0, wob: Math.random() * 6, wind: 0, armor: (t.armor || 0) + Math.floor(w / 3), burn: null, slowT: 0 };
   if (t.ranged) { e.ranged = true; e.throwTimer = 1.6 + Math.random() * 2; }
-  if (t.shield) { e.shieldMax = Math.round(t.shield + w * 0.7); e.shieldHp = e.shieldMax; e.shieldDown = 0; }
+  if (t.shield || waveMod.shieldAll) { e.shieldMax = Math.round((t.shield || 4) + w * 0.7); e.shieldHp = e.shieldMax; e.shieldDown = 0; }
   if (t.healer) { e.healTimer = 2.4 + Math.random(); e.holdY = horizonY + (H - horizonY) * (0.30 + Math.random() * 0.15); }
   if (t.explode) { e.blast = t.blast; }
   if (t.enrage) { e.enraged = false; }
-  if (type === "boss") { e.throwTimer = 2.2; e.phase2 = false; e.summonTimer = 999; e.slamTimer = 999; e.holdY = H * 0.42; }
+  if (waveMod.rage && t.enrage) e.enraged = true;
+  if (waveMod.eliteChance && Math.random() < waveMod.eliteChance) { e.elite = true; e.hp = Math.round(e.hp * 2.5); e.maxHp = e.hp; e.armor += 2; e.baseScale *= 1.25; e.reward = Math.round(e.reward * 2); }
+  if (type === "boss") { e.throwTimer = 2.2; e.phase2 = false; e.summonTimer = 999; e.slamTimer = 999; e.holdY = H * 0.42; e.bossKind = bossesDefeated % 4; }
   return e;
 }
 function pickType() {
@@ -252,7 +281,7 @@ function pickType() {
   return pool[(Math.random() * pool.length) | 0];
 }
 function spawnSavage(forceBoss) {
-  if (forceBoss) { enemies.push(makeEnemy("boss", W / 2 + (Math.random() * 80 - 40), horizonY + 8)); bossActive = true; banner("BOSS!", 1.3); sfx.boss(); screenShake = 12; return; }
+  if (forceBoss) { const e = makeEnemy("boss", W / 2 + (Math.random() * 80 - 40), horizonY + 8); enemies.push(e); bossActive = true; banner(BOSS_NAMES[e.bossKind] + "!", 1.3, "#ff4a3a"); sfx.boss(); screenShake = 12; return; }
   const type = pickType();
   const y0 = horizonY + (H - horizonY) * 0.16 + Math.random() * 26;
   const margin = W * 0.12;
@@ -309,7 +338,15 @@ function explode(e) {
 function burst(x, y, color, count) { for (let i = 0; i < count; i++) { const a = Math.random() * Math.PI * 2, s = 60 + Math.random() * 240; particles.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, r: 1.5 + Math.random() * 3.2, life: 0.3 + Math.random() * 0.45, max: 0.75, color }); } }
 function leafBurst(x, y) { burst(x, y, "#5aa83a", 10); for (let i = 0; i < 6; i++) { const a = Math.random() * Math.PI * 2, s = 40 + Math.random() * 120; particles.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s - 40, r: 2 + Math.random() * 2, life: 0.6 + Math.random() * 0.5, max: 1.1, color: Math.random() < 0.5 ? "#7ac84a" : "#3a7a2a" }); } }
 function floatText(t, x, y, color, size) { floatTexts.push({ text: t, x, y, color, size: size || 18, life: 1.0, max: 1.0, vy: -52 }); }
-function banner(t, time) { bannerText = t; bannerTotal = time || 1.2; bannerTime = bannerTotal; }
+function banner(t, time, color) { bannerText = t; bannerTotal = time || 1.2; bannerTime = bannerTotal; bannerColor = color || "#ffe14a"; }
+
+function updateAmbient(dt) {
+  const b = BIOMES[curBiome]; const now = performance.now();
+  if (b.ambient === "leaves" && Math.random() < 0.15) { ambient.push({ x: Math.random() * W, y: horizonY - 10, vx: 8 + Math.random() * 16, vy: 2 + Math.random() * 4, r: 3 + Math.random() * 3, life: 2 + Math.random(), max: 3, color: Math.random() < 0.5 ? "#5a9a3a" : "#3a7a2a", rot: Math.random() * 6 }); }
+  if (b.ambient === "rain" && Math.random() < 0.6) { ambient.push({ x: Math.random() * W, y: -5, vx: -20 + Math.random() * 8, vy: 180 + Math.random() * 80, r: 1, life: 1.2 + Math.random() * 0.6, max: 1.8, color: "rgba(180,200,220,0.5)", rot: 0 }); }
+  if (b.ambient === "embers" && Math.random() < 0.3) { const x = Math.random() * W; ambient.push({ x, y: horizonY + (H - horizonY) * (0.2 + Math.random() * 0.6), vx: (Math.random() - 0.5) * 20, vy: -60 - Math.random() * 40, r: 2 + Math.random() * 3, life: 1.0 + Math.random() * 0.8, max: 1.8, color: Math.random() < 0.5 ? "#ff7a3a" : "#ffb040", rot: Math.random() * 6 }); }
+  for (let i = ambient.length - 1; i >= 0; i--) { const a = ambient[i]; a.x += a.vx * dt; a.y += a.vy * dt; a.life -= dt; if (a.life <= 0 || a.y > H) ambient.splice(i, 1); }
+}
 
 // ============================================================
 //  更新
@@ -329,6 +366,7 @@ function update(dt) {
   if (player.mods.shield) player.shieldT = Math.max(0, player.shieldT - dt);
   player.recoil = Math.max(0, player.recoil - dt * 8);
   player.animTime += dt;
+  updateAmbient(dt);
   if (freezeTimer > 0) return;
 
   movePlayer(dt);
@@ -345,6 +383,7 @@ function update(dt) {
       if (wave <= 2) extra = 1;
       else extra = 2 + Math.min(4, wave - 2);
       if (wave >= 5 && Math.random() < 0.4) extra += 2;
+      extra = Math.max(1, Math.round(extra * waveMod.spawnMul));
       for (let i = 0; i < extra; i++) spawnSavage(false);
       spawnTimer = Math.max(0.35, 1.35 - wave * 0.06);
     }
@@ -486,7 +525,7 @@ function tryRevive() {
 // ============================================================
 function killEnemy(e) {
   combo += 1; comboTimer = COMBO_WIN;
-  const mult = 1 + Math.min(combo, 30) * 0.1;
+  const mult = (1 + Math.min(combo, 30) * 0.1) * waveMod.scoreMul;
   const gained = Math.round(e.reward * mult);
   score += gained;
   if (e.blast) explode(e); else { leafBurst(e.x, e.y); sfx.kill(); }
@@ -494,7 +533,7 @@ function killEnemy(e) {
   if (combo >= 3) floatText(`x${combo}`, e.x + 26, e.y - 18, "#ff9a3a", 18);
   freezeTimer = e.type === "boss" ? 0.14 : 0.045;
   if (player.mods.lifesteal && Math.random() < 0.25 && player.hp < player.maxHp) { player.hp = Math.min(player.maxHp, player.hp + 18); floatText("+血", player.x, player.y - 74, "#7aff8a", 14); }
-  if (e.type === "boss") { bossActive = false; screenShake = 14; wave += 1; banner("WAVE " + wave, 1.4); sfx.clear(); }
+  if (e.type === "boss") { bossActive = false; bossesDefeated += 1; wave += 1; screenShake = 14; banner("WAVE " + wave, 1.4, "#8eff7a"); sfx.clear(); }
   else kills += 1;
 }
 function splashDamage(cx, cy, radius, dmg) {
@@ -570,36 +609,42 @@ groundCanvas.width = W; groundCanvas.height = H;
 const gctx = groundCanvas.getContext("2d");
 function rr(g, x, y, w, h, r) { r = Math.min(r, Math.abs(w) / 2, Math.abs(h) / 2); g.beginPath(); g.moveTo(x + r, y); g.lineTo(x + w - r, y); g.quadraticCurveTo(x + w, y, x + w, y + r); g.lineTo(x + w, y + h - r); g.quadraticCurveTo(x + w, y + h, x + w - r, y + h); g.lineTo(x + r, y + h); g.quadraticCurveTo(x, y + h, x, y + h - r); g.lineTo(x, y + r); g.quadraticCurveTo(x, y, x + r, y); }
 function gShadow(g, x, y, rx, ry) { g.fillStyle = "rgba(0,0,0,0.32)"; g.beginPath(); g.ellipse(x, y, rx, ry, 0, 0, Math.PI * 2); g.fill(); }
-function drawPalm(g, x, y, sc) { gShadow(g, x - 4 * sc, y + 6 * sc, 24 * sc, 10 * sc); g.save(); g.translate(x, y); g.strokeStyle = "#5a3a1e"; g.lineWidth = 7 * sc; g.lineCap = "round"; g.beginPath(); g.moveTo(0, 6 * sc); g.quadraticCurveTo(-6 * sc, -30 * sc, 0, -64 * sc); g.stroke(); g.fillStyle = "#3f7a2a"; for (let i = 0; i < 6; i++) { const a = -Math.PI / 2 + (i - 2.5) * 0.5; g.save(); g.translate(0, -64 * sc); g.rotate(a); g.beginPath(); g.ellipse(28 * sc, 0, 30 * sc, 8 * sc, 0, 0, Math.PI * 2); g.fill(); g.restore(); } g.fillStyle = "#2f5a1e"; g.beginPath(); g.arc(0, -64 * sc, 6 * sc, 0, Math.PI * 2); g.fill(); g.restore(); }
+function drawPalm(g, x, y, sc, leafColor) { gShadow(g, x - 4 * sc, y + 6 * sc, 24 * sc, 10 * sc); g.save(); g.translate(x, y); g.strokeStyle = "#5a3a1e"; g.lineWidth = 7 * sc; g.lineCap = "round"; g.beginPath(); g.moveTo(0, 6 * sc); g.quadraticCurveTo(-6 * sc, -30 * sc, 0, -64 * sc); g.stroke(); g.fillStyle = leafColor || "#3f7a2a"; for (let i = 0; i < 6; i++) { const a = -Math.PI / 2 + (i - 2.5) * 0.5; g.save(); g.translate(0, -64 * sc); g.rotate(a); g.beginPath(); g.ellipse(28 * sc, 0, 30 * sc, 8 * sc, 0, 0, Math.PI * 2); g.fill(); g.restore(); } g.fillStyle = "#2f5a1e"; g.beginPath(); g.arc(0, -64 * sc, 6 * sc, 0, Math.PI * 2); g.fill(); g.restore(); }
 function drawFern(g, x, y, sc) { gShadow(g, x, y + 3 * sc, 16 * sc, 5 * sc); g.save(); g.translate(x, y); g.strokeStyle = "#3a8a2a"; g.lineWidth = 3 * sc; g.lineCap = "round"; for (let i = -2; i <= 2; i++) { g.beginPath(); g.moveTo(0, 0); g.quadraticCurveTo(i * 8 * sc, -16 * sc, i * 16 * sc, -26 * sc); g.stroke(); } g.restore(); }
 function drawRock(g, x, y, sc) { gShadow(g, x - 3 * sc, y + 4 * sc, 20 * sc, 7 * sc); g.save(); g.translate(x, y); g.fillStyle = "#6a6a64"; g.beginPath(); g.moveTo(-18 * sc, 2 * sc); g.lineTo(-10 * sc, -12 * sc); g.lineTo(6 * sc, -14 * sc); g.lineTo(18 * sc, -2 * sc); g.lineTo(12 * sc, 4 * sc); g.closePath(); g.fill(); g.fillStyle = "#84847c"; g.beginPath(); g.moveTo(-10 * sc, -12 * sc); g.lineTo(2 * sc, -10 * sc); g.lineTo(6 * sc, -14 * sc); g.closePath(); g.fill(); g.restore(); }
 function drawTotem(g, x, y, sc) { gShadow(g, x - 3 * sc, y + 4 * sc, 8 * sc, 4 * sc); g.save(); g.translate(x, y); g.fillStyle = "#4a3220"; g.fillRect(-3 * sc, -44 * sc, 6 * sc, 44 * sc); g.fillStyle = "#e8e6dc"; g.beginPath(); g.arc(0, -48 * sc, 9 * sc, 0, Math.PI * 2); g.fill(); g.fillStyle = "#1a0e08"; g.fillRect(-4 * sc, -50 * sc, 2 * sc, 2 * sc); g.fillRect(2 * sc, -50 * sc, 2 * sc, 2 * sc); g.fillRect(-3 * sc, -45 * sc, 6 * sc, 1.5 * sc); g.fillStyle = "#c0392b"; g.fillRect(-3 * sc, -36 * sc, 6 * sc, 4 * sc); g.restore(); }
 function drawBannerProp(g, x, y, sc) { g.save(); g.translate(x, y); g.fillStyle = "#5a3a1e"; g.fillRect(-2 * sc, -50 * sc, 4 * sc, 50 * sc); g.fillStyle = "#c0392b"; g.beginPath(); g.moveTo(2 * sc, -50 * sc); g.lineTo(26 * sc, -42 * sc); g.lineTo(2 * sc, -34 * sc); g.closePath(); g.fill(); g.restore(); }
-const PROPS = [
-  { k: "palm", x: W * 0.08, y: H * 0.50 }, { k: "palm", x: W * 0.94, y: H * 0.42 }, { k: "palm", x: W * 0.97, y: H * 0.74 }, { k: "palm", x: W * 0.04, y: H * 0.80 },
-  { k: "fern", x: W * 0.22, y: H * 0.55 }, { k: "fern", x: W * 0.78, y: H * 0.68 }, { k: "fern", x: W * 0.30, y: H * 0.82 }, { k: "fern", x: W * 0.70, y: H * 0.50 },
-  { k: "rock", x: W * 0.40, y: H * 0.50 }, { k: "rock", x: W * 0.66, y: H * 0.80 }, { k: "rock", x: W * 0.20, y: H * 0.70 },
-  { k: "totem", x: W * 0.12, y: H * 0.66 }, { k: "totem", x: W * 0.88, y: H * 0.60 },
-  { k: "banner", x: W * 0.84, y: H * 0.86 }, { k: "banner", x: W * 0.16, y: H * 0.62 }
-];
+function drawDeadTree(g, x, y, sc) { g.save(); g.translate(x, y); g.scale(sc, sc); g.strokeStyle = "#3a2a1a"; g.lineWidth = 4; g.beginPath(); g.moveTo(0, 0); g.lineTo(0, -60 + Math.random() * 8 - 4); g.stroke(); g.beginPath(); g.moveTo(0, -35); g.lineTo(-14, -50 + Math.random() * 8); g.stroke(); g.beginPath(); g.moveTo(0, -40); g.lineTo(12, -52 + Math.random() * 8); g.stroke(); g.restore(); }
+function drawRuin(g, x, y, sc) { g.save(); g.translate(x, y); g.scale(sc, sc); g.fillStyle = "#5a4a3a"; g.fillRect(-12, -32, 24, 32); g.fillStyle = "#4a3a2a"; g.fillRect(-14, -24, 4, 16); g.fillRect(10, -20, 4, 12); g.restore(); }
 function buildGround() {
+  const b = BIOMES[curBiome];
   const g = gctx; g.clearRect(0, 0, W, H);
-  const gg = g.createLinearGradient(0, horizonY, 0, H); gg.addColorStop(0, "#2c5a22"); gg.addColorStop(1, "#1c3a16");
+  const gg = g.createLinearGradient(0, horizonY, 0, H); gg.addColorStop(0, b.ground); gg.addColorStop(1, "#1c3a16");
   g.fillStyle = gg; g.fillRect(0, horizonY, W, H - horizonY);
   for (let i = 0; i < 600; i++) { const yy = horizonY + Math.random() * (H - horizonY); g.fillStyle = `rgba(${40 + Math.random() * 40},${90 + Math.random() * 50},${30 + Math.random() * 30},0.4)`; g.fillRect(Math.random() * W, yy, 2, 2); }
   g.save();
   g.beginPath();
   g.moveTo(W / 2 - roadHalf(horizonY), horizonY); g.lineTo(W / 2 + roadHalf(horizonY), horizonY);
   g.lineTo(W / 2 + roadHalf(H), H); g.lineTo(W / 2 - roadHalf(H), H); g.closePath(); g.clip();
-  const dg = g.createLinearGradient(0, horizonY, 0, H); dg.addColorStop(0, "#6a4a26"); dg.addColorStop(1, "#4a3219");
+  const dg = g.createLinearGradient(0, horizonY, 0, H); dg.addColorStop(0, b.dirt[0]); dg.addColorStop(1, b.dirt[1]);
   g.fillStyle = dg; g.fillRect(0, horizonY, W, H - horizonY);
   for (let i = 0; i < 2200; i++) { const yy = horizonY + Math.random() * (H - horizonY); const sc = scaleAt(yy); const half = roadHalf(yy); const xx = W / 2 + (Math.random() * 2 - 1) * half; const v = 30 + Math.random() * 50; g.fillStyle = `rgba(${v + 30},${v + 10},${v - 10},${0.3 + sc * 0.3})`; g.fillRect(xx, yy, 2 * sc, 2 * sc); }
   for (let i = 0; i < 30; i++) { const yy = horizonY + 30 + (i * 53) % (H - horizonY - 40); const half = roadHalf(yy); const xx = W / 2 + ((i * 97) % (half * 2)) - half; const sc = scaleAt(yy); g.fillStyle = "rgba(60,50,40,0.6)"; g.beginPath(); g.ellipse(xx, yy, 8 * sc, 4 * sc, 0, 0, Math.PI * 2); g.fill(); }
   g.restore();
   g.strokeStyle = "#3a8a2a"; g.lineWidth = 2;
   for (let i = 0; i < 80; i++) { const yy = horizonY + 10 + Math.random() * (H - horizonY - 10); const sc = scaleAt(yy); const off = roadHalf(yy) + 4 + Math.random() * 30; for (const s of [-1, 1]) { const xx = W / 2 + s * off; g.beginPath(); g.moveTo(xx, yy); g.lineTo(xx + s * 2, yy - 6 * sc); g.stroke(); } }
-  for (const p of PROPS) { const sc = scaleAt(p.y) * 1.0; if (p.k === "palm") drawPalm(g, p.x, p.y, sc); else if (p.k === "fern") drawFern(g, p.x, p.y, sc); else if (p.k === "rock") drawRock(g, p.x, p.y, sc); else if (p.k === "totem") drawTotem(g, p.x, p.y, sc); else if (p.k === "banner") drawBannerProp(g, p.x, p.y, sc); }
-  for (let i = 0; i < 10; i++) { const t = i / 9; const y = horizonY + 50 + Math.pow(t, 1.5) * (H - horizonY - 90); const sc = scaleAt(y) * 1.0 + 0.15; const off = roadHalf(y) + 30 * sc; drawPalm(g, W / 2 - off, y, sc); drawPalm(g, W / 2 + off, y, sc); }
+  const props = [
+    { k: "palm", x: W * 0.08, y: H * 0.50 }, { k: "palm", x: W * 0.94, y: H * 0.42 }, { k: "palm", x: W * 0.97, y: H * 0.74 }, { k: "palm", x: W * 0.04, y: H * 0.80 },
+    { k: "fern", x: W * 0.22, y: H * 0.55 }, { k: "fern", x: W * 0.78, y: H * 0.68 }, { k: "fern", x: W * 0.30, y: H * 0.82 }, { k: "fern", x: W * 0.70, y: H * 0.50 },
+    { k: "rock", x: W * 0.40, y: H * 0.50 }, { k: "rock", x: W * 0.66, y: H * 0.80 }, { k: "rock", x: W * 0.20, y: H * 0.70 },
+    { k: "totem", x: W * 0.12, y: H * 0.66 }, { k: "totem", x: W * 0.88, y: H * 0.60 },
+    { k: "banner", x: W * 0.84, y: H * 0.86 }, { k: "banner", x: W * 0.16, y: H * 0.62 }
+  ];
+  if (curBiome === 2 || curBiome === 3) { props.push({ k: "deadTree", x: W * 0.15, y: H * 0.72 }); props.push({ k: "deadTree", x: W * 0.85, y: H * 0.54 }); }
+  if (curBiome === 2) { props.push({ k: "ruin", x: W * 0.33, y: H * 0.60 }, { k: "ruin", x: W * 0.67, y: H * 0.76 }); }
+  if (curBiome === 0) { props.push({ k: "palm", x: W * 0.50, y: H * 0.78 }); }
+  for (const p of props) { const sc = scaleAt(p.y) * 1.0; if (p.k === "palm") drawPalm(g, p.x, p.y, sc, b.palm); else if (p.k === "fern") drawFern(g, p.x, p.y, sc); else if (p.k === "rock") drawRock(g, p.x, p.y, sc); else if (p.k === "totem") drawTotem(g, p.x, p.y, sc); else if (p.k === "banner") drawBannerProp(g, p.x, p.y, sc); else if (p.k === "deadTree") drawDeadTree(g, p.x, p.y, sc); else if (p.k === "ruin") drawRuin(g, p.x, p.y, sc); }
+  for (let i = 0; i < 10; i++) { const t = i / 9; const y = horizonY + 50 + Math.pow(t, 1.5) * (H - horizonY - 90); const sc = scaleAt(y) * 1.0 + 0.15; const off = roadHalf(y) + 30 * sc; drawPalm(g, W / 2 - off, y, sc, b.palm); drawPalm(g, W / 2 + off, y, sc, b.palm); }
   g.strokeStyle = "rgba(255,210,80,0.8)"; g.lineWidth = 3; g.setLineDash([18, 12]); g.beginPath(); g.moveTo(0, coreY); g.lineTo(W, coreY); g.stroke(); g.setLineDash([]);
   g.fillStyle = "rgba(255,225,120,0.9)"; g.font = "800 13px Segoe UI"; g.textAlign = "left"; g.fillText("防线", 14, coreY - 8);
 }
@@ -609,21 +654,23 @@ function buildGround() {
 // ============================================================
 const clouds = Array.from({ length: 6 }, () => ({ x: Math.random() * W, y: 20 + Math.random() * 80, s: 0.6 + Math.random() * 0.8 }));
 function drawSky() {
-  const g = ctx.createLinearGradient(0, 0, 0, horizonY); g.addColorStop(0, "#2a78d4"); g.addColorStop(0.5, "#6fb4e8"); g.addColorStop(1, "#cfe8f5");
+  const b = BIOMES[curBiome];
+  const g = ctx.createLinearGradient(0, 0, 0, horizonY); g.addColorStop(0, b.sky[0]); g.addColorStop(0.5, b.sky[1]); g.addColorStop(1, b.sky[2]);
   ctx.fillStyle = g; ctx.fillRect(0, 0, W, horizonY);
-  const sg = ctx.createRadialGradient(W * 0.78, 60, 4, W * 0.78, 60, 120); sg.addColorStop(0, "rgba(255,250,220,0.95)"); sg.addColorStop(1, "rgba(255,250,220,0)");
+  const sg = ctx.createRadialGradient(W * 0.78, 60, 4, W * 0.78, 60, 120); sg.addColorStop(0, b.glow); sg.addColorStop(1, "rgba(255,250,220,0)");
   ctx.fillStyle = sg; ctx.fillRect(0, 0, W, horizonY);
-  ctx.fillStyle = "rgba(255,252,235,0.95)"; ctx.beginPath(); ctx.arc(W * 0.78, 60, 24, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = b.sun; ctx.beginPath(); ctx.arc(W * 0.78, 60, 24, 0, Math.PI * 2); ctx.fill();
   ctx.fillStyle = "rgba(255,255,255,0.85)";
   for (const c of clouds) { c.x = (c.x + 0.15) % (W + 120) - 60; ctx.beginPath(); ctx.ellipse(c.x, c.y, 50 * c.s, 16 * c.s, 0, 0, Math.PI * 2); ctx.ellipse(c.x + 30 * c.s, c.y + 4, 36 * c.s, 13 * c.s, 0, 0, Math.PI * 2); ctx.fill(); }
 }
 function drawCanopy() {
+  const b = BIOMES[curBiome];
   const par = (player.x - W / 2);
-  ctx.fillStyle = "#3a6a4a"; ctx.beginPath(); ctx.moveTo(0, horizonY); for (let x = 0; x <= W; x += 60) ctx.lineTo(x + par * 0.02, horizonY - 30 - Math.sin(x * 0.05) * 18); ctx.lineTo(W, horizonY); ctx.closePath(); ctx.fill();
-  ctx.fillStyle = "#2a5a32"; for (let i = 0; i < 16; i++) { const x = (i * 60 + par * 0.06) % (W + 80) - 40; ctx.beginPath(); ctx.arc(x, horizonY - 6, 26, 0, Math.PI * 2); ctx.fill(); }
-  ctx.fillStyle = "#2f6a26"; for (let i = 0; i < 8; i++) { const y = horizonY + 30 + i * 120; const sc = scaleAt(y) * 0.9 + 0.2; ctx.save(); ctx.translate(-10 + par * 0.1, y); ctx.beginPath(); ctx.ellipse(30 * sc, 0, 60 * sc, 14 * sc, 0.3, 0, Math.PI * 2); ctx.fill(); ctx.restore(); ctx.save(); ctx.translate(W + 10 + par * 0.1, y); ctx.beginPath(); ctx.ellipse(-30 * sc, 0, 60 * sc, 14 * sc, -0.3, 0, Math.PI * 2); ctx.fill(); ctx.restore(); }
+  ctx.fillStyle = b.canopy1 || "#3a6a4a"; ctx.beginPath(); ctx.moveTo(0, horizonY); for (let x = 0; x <= W; x += 60) ctx.lineTo(x + par * 0.02, horizonY - 30 - Math.sin(x * 0.05) * 18); ctx.lineTo(W, horizonY); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = b.canopy2 || "#2a5a32"; for (let i = 0; i < 16; i++) { const x = (i * 60 + par * 0.06) % (W + 80) - 40; ctx.beginPath(); ctx.arc(x, horizonY - 6, 26, 0, Math.PI * 2); ctx.fill(); }
+  ctx.fillStyle = b.canopy3 || "#2f6a26"; for (let i = 0; i < 8; i++) { const y = horizonY + 30 + i * 120; const sc = scaleAt(y) * 0.9 + 0.2; ctx.save(); ctx.translate(-10 + par * 0.1, y); ctx.beginPath(); ctx.ellipse(30 * sc, 0, 60 * sc, 14 * sc, 0.3, 0, Math.PI * 2); ctx.fill(); ctx.restore(); ctx.save(); ctx.translate(W + 10 + par * 0.1, y); ctx.beginPath(); ctx.ellipse(-30 * sc, 0, 60 * sc, 14 * sc, -0.3, 0, Math.PI * 2); ctx.fill(); ctx.restore(); }
 }
-function drawHaze() { const g = ctx.createLinearGradient(0, horizonY, 0, horizonY + (H - horizonY) * 0.55); g.addColorStop(0, "rgba(200,230,200,0.45)"); g.addColorStop(1, "rgba(200,230,200,0)"); ctx.fillStyle = g; ctx.fillRect(0, horizonY, W, (H - horizonY) * 0.55); }
+function drawHaze() { const b = BIOMES[curBiome]; const g = ctx.createLinearGradient(0, horizonY, 0, horizonY + (H - horizonY) * 0.55); g.addColorStop(0, b.haze); g.addColorStop(1, "rgba(200,230,200,0)"); ctx.fillStyle = g; ctx.fillRect(0, horizonY, W, (H - horizonY) * 0.55); }
 
 // ============================================================
 //  玩家（丛林枪手，背影动态）
@@ -821,10 +868,33 @@ function drawHazards() {
   }
 }
 function drawBossBar() { const boss = enemies.find(e => e.type === "boss"); if (!boss) return; const bw = W * 0.62, bh = 20, bx = (W - bw) / 2, by = horizonY + 24; ctx.save(); ctx.fillStyle = "rgba(0,0,0,0.66)"; rr(ctx, bx - 6, by - 6, bw + 12, bh + 12, 8); ctx.fill(); ctx.fillStyle = "rgba(40,20,8,0.92)"; rr(ctx, bx, by, bw, bh, 6); ctx.fill(); const pct = Math.max(0, boss.hp / boss.maxHp); const g = ctx.createLinearGradient(bx, 0, bx + bw, 0); g.addColorStop(0, "#ff3a2a"); g.addColorStop(1, "#ff9a3a"); ctx.fillStyle = g; rr(ctx, bx, by, bw * pct, bh, 6); ctx.fill(); ctx.strokeStyle = "rgba(255,150,80,0.85)"; ctx.lineWidth = 2; rr(ctx, bx, by, bw, bh, 6); ctx.stroke(); ctx.fillStyle = "#fff"; ctx.font = "800 13px Segoe UI"; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.fillText(`CHIEF  ${Math.ceil(boss.hp)} / ${boss.maxHp}`, W / 2, by + bh / 2); ctx.restore(); }
-function drawBanner() { if (bannerTime <= 0) return; const p = 1 - bannerTime / bannerTotal; const a = bannerTime > bannerTotal * 0.2 ? 1 : bannerTime / (bannerTotal * 0.2); const scale = 0.6 + Math.min(1, p * 3) * 0.5; ctx.save(); ctx.globalAlpha = a; ctx.translate(W / 2, H * 0.3); ctx.scale(scale, scale); ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.font = "900 64px Segoe UI, Microsoft YaHei, sans-serif"; ctx.lineWidth = 10; ctx.strokeStyle = "rgba(0,0,0,0.85)"; ctx.strokeText(bannerText, 0, 0); ctx.fillStyle = bannerText === "BOSS!" ? "#ff4a3a" : "#ffe14a"; ctx.shadowBlur = 30; ctx.shadowColor = ctx.fillStyle; ctx.fillText(bannerText, 0, 0); ctx.restore(); }
+function drawBanner() { if (bannerTime <= 0) return; const p = 1 - bannerTime / bannerTotal; const a = bannerTime > bannerTotal * 0.2 ? 1 : bannerTime / (bannerTotal * 0.2); const scale = 0.6 + Math.min(1, p * 3) * 0.5; ctx.save(); ctx.globalAlpha = a; ctx.translate(W / 2, H * 0.3); ctx.scale(scale, scale); ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.font = "900 64px Segoe UI, Microsoft YaHei, sans-serif"; ctx.lineWidth = 10; ctx.strokeStyle = "rgba(0,0,0,0.85)"; ctx.strokeText(bannerText, 0, 0); ctx.fillStyle = bannerColor; ctx.shadowBlur = 30; ctx.shadowColor = ctx.fillStyle; ctx.fillText(bannerText, 0, 0); ctx.restore(); }
 function drawCombo() { if (combo < 2) return; const a = Math.min(1, comboTimer / COMBO_WIN + 0.2); ctx.save(); ctx.globalAlpha = a; ctx.textAlign = "center"; ctx.textBaseline = "middle"; ctx.font = "900 40px Segoe UI, Microsoft YaHei, sans-serif"; ctx.lineWidth = 7; ctx.strokeStyle = "rgba(0,0,0,0.8)"; const t = `COMBO x${combo}`; ctx.strokeText(t, W / 2, 90); ctx.fillStyle = combo >= 6 ? "#ff9a3a" : "#8eff7a"; ctx.shadowBlur = 20; ctx.shadowColor = ctx.fillStyle; ctx.fillText(t, W / 2, 90); ctx.shadowBlur = 0; ctx.fillStyle = "rgba(0,0,0,0.5)"; ctx.fillRect(W / 2 - 80, 116, 160, 6); ctx.fillStyle = "#8eff7a"; ctx.fillRect(W / 2 - 80, 116, 160 * Math.max(0, comboTimer / COMBO_WIN), 6); ctx.restore(); }
 const crt = document.createElement("canvas"); crt.width = W; crt.height = H; { const c = crt.getContext("2d"); for (let y = 0; y < H; y += 3) { c.fillStyle = "rgba(0,0,0,0.10)"; c.fillRect(0, y, W, 1); } }
 function drawCRT() { ctx.drawImage(crt, 0, 0); }
+function drawAmbient() {
+  const b = BIOMES[curBiome];
+  for (const a of ambient) {
+    ctx.globalAlpha = Math.min(1, a.life / a.max * 2) * (a.life < a.max * 0.2 ? a.life / (a.max * 0.2) : 1);
+    if (b.ambient === "rain") { ctx.strokeStyle = a.color; ctx.lineWidth = 1; ctx.beginPath(); ctx.moveTo(a.x, a.y); ctx.lineTo(a.x + a.vx * 0.05, a.y + a.vy * 0.05); ctx.stroke(); }
+    else { ctx.fillStyle = a.color; ctx.save(); ctx.translate(a.x, a.y); ctx.rotate(a.rot); ctx.beginPath(); ctx.arc(0, 0, a.r, 0, Math.PI * 2); ctx.fill(); ctx.restore(); }
+  }
+  ctx.globalAlpha = 1;
+}
+function drawDarkFog() {
+  const d = BIOMES[curBiome].dark + waveMod.dark;
+  if (d <= 0) return;
+  const g = ctx.createRadialGradient(player.x, player.y - 30, W * 0.15, player.x, player.y - 30, W * 0.7);
+  g.addColorStop(0, "rgba(0,0,0,0)"); g.addColorStop(1, `rgba(0,0,0,${Math.min(0.6, d)})`);
+  ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+}
+function drawModChip() {
+  if (!waveMod.name) return;
+  ctx.save(); ctx.textAlign = "left"; ctx.textBaseline = "top";
+  ctx.fillStyle = "rgba(0,0,0,0.55)"; ctx.font = "800 14px Segoe UI"; ctx.fillText("词缀: " + waveMod.name, 12, horizonY + 8);
+  ctx.fillStyle = "#b08aff"; ctx.fillText("词缀: " + waveMod.name, 12, horizonY + 8);
+  ctx.restore();
+}
 
 function draw() {
   ctx.clearRect(0, 0, W, H);
@@ -839,7 +909,8 @@ function draw() {
   drawEnemyBullets(); drawBullets(); drawMuzzle();
   drawBolts();
   drawParticles(); drawFloats();
-  drawBossBar(); drawCombo(); drawBanner();
+  drawAmbient(); drawDarkFog();
+  drawBossBar(); drawCombo(); drawBanner(); drawModChip();
   drawHaze(); drawCRT();
   ctx.restore();
 }
