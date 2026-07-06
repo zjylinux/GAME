@@ -104,13 +104,13 @@ function baseMod() { return { speedMul: 1, hpMul: 1, scoreMul: 1, spawnMul: 1, c
 let lastModId = null;
 function rollMod() { const m = baseMod(); const pool = MODIFIERS.filter(x => x.id !== lastModId); const pk = pool[Math.floor(Math.random() * pool.length)]; lastModId = pk.id; pk.apply(m); m.name = pk.name; m.desc = pk.desc; return m; }
 const BIOMES = [
-  { name: "丛林", sky: ["#2a78d4", "#6fb4e8", "#cfe8f5"], sun: "#fff8dc", glow: "rgba(255,250,220,0.95)", ground: "#2c5a22", dirt: ["#6a4a26", "#4a3219"], palm: "#3f7a2a", canopy1: "#3a6a4a", canopy2: "#2a5a32", canopy3: "#2f6a26", ambient: "leaves", haze: "rgba(200,230,200,0.45)", dark: 0,
+  { name: "丛林", sky: ["#2a78d4", "#6fb4e8", "#cfe8f5"], sun: "#fff8dc", glow: "rgba(255,250,220,0.95)", ground: "#2c5a22", dirt: ["#6a4a26", "#4a3219"], palm: "#3f7a2a", canopy1: "#3a6a4a", canopy2: "#2a5a32", canopy3: "#2f6a26", ambient: "leaves", haze: "rgba(200,230,200,0.45)", dark: 0, accent: "#8eff7a",
     enemySkins: { savage: "#b07a4a", scout: "#9a6a3a", brute: "#8a5a32", shielder: "#7a6a4a", shaman: "#4a8a6a", bomber: "#9a5a2a", berserker: "#a04a2a" } },
-  { name: "沼泽", sky: ["#3a4a3a", "#5a6a4a", "#8a9a6a"], sun: "#c0c8a0", glow: "rgba(200,210,170,0.6)", ground: "#283a26", dirt: ["#3a3220", "#241e10"], palm: "#3a5a2a", canopy1: "#2a4a3a", canopy2: "#1a3a2a", canopy3: "#1f4a2a", ambient: "rain", haze: "rgba(150,170,130,0.55)", dark: 0.2,
+  { name: "沼泽", sky: ["#3a4a3a", "#5a6a4a", "#8a9a6a"], sun: "#c0c8a0", glow: "rgba(200,210,170,0.6)", ground: "#283a26", dirt: ["#3a3220", "#241e10"], palm: "#3a5a2a", canopy1: "#2a4a3a", canopy2: "#1a3a2a", canopy3: "#1f4a2a", ambient: "rain", haze: "rgba(150,170,130,0.55)", dark: 0.2, accent: "#a8d06a",
     enemySkins: { savage: "#4a6a3a", scout: "#3a5a2a", brute: "#2a4a1a", shielder: "#5a6a4a", shaman: "#6a8a4a", bomber: "#4a5a1a", berserker: "#3a6a2a" } },
-  { name: "古遗迹", sky: ["#3a2a5a", "#8a5a3a", "#ffb86a"], sun: "#ffd070", glow: "rgba(255,200,110,0.8)", ground: "#4a4030", dirt: ["#6a5a3a", "#42332a"], palm: "#5a4a2a", canopy1: "#5a4a3a", canopy2: "#4a3a2a", canopy3: "#4a3a2a", ambient: "embers", haze: "rgba(220,180,120,0.4)", dark: 0.1,
+  { name: "古遗迹", sky: ["#3a2a5a", "#8a5a3a", "#ffb86a"], sun: "#ffd070", glow: "rgba(255,200,110,0.8)", ground: "#4a4030", dirt: ["#6a5a3a", "#42332a"], palm: "#5a4a2a", canopy1: "#5a4a3a", canopy2: "#4a3a2a", canopy3: "#4a3a2a", ambient: "embers", haze: "rgba(220,180,120,0.4)", dark: 0.1, accent: "#ffb86a",
     enemySkins: { savage: "#8a8478", scout: "#9a9488", brute: "#6a6458", shielder: "#aaa498", shaman: "#8a7a6a", bomber: "#7a7468", berserker: "#5a5448" } },
-  { name: "火山夜", sky: ["#1a0a14", "#3a1010", "#6a1a14"], sun: "#ff5a2a", glow: "rgba(255,90,40,0.8)", ground: "#2a1612", dirt: ["#3a1a14", "#1a0a08"], palm: "#3a1a14", canopy1: "#2a1612", canopy2: "#1a0a08", canopy3: "#1f0a0a", ambient: "embers", haze: "rgba(120,30,20,0.5)", dark: 0.35,
+  { name: "火山夜", sky: ["#1a0a14", "#3a1010", "#6a1a14"], sun: "#ff5a2a", glow: "rgba(255,90,40,0.8)", ground: "#2a1612", dirt: ["#3a1a14", "#1a0a08"], palm: "#3a1a14", canopy1: "#2a1612", canopy2: "#1a0a08", canopy3: "#1f0a0a", ambient: "embers", haze: "rgba(120,30,20,0.5)", dark: 0.35, accent: "#ff6a3a",
     enemySkins: { savage: "#6a2a1a", scout: "#8a3a2a", brute: "#5a1a0a", shielder: "#7a4a3a", shaman: "#aa3a2a", bomber: "#6a1a0a", berserker: "#4a1a0a" } }
 ];
 function biomeIdx() { return bossesDefeated % BIOMES.length; }
@@ -207,6 +207,8 @@ function updateHud() {
   scoreEl.textContent = score; waveEl.textContent = wave; squadEl.textContent = player.life; weaponEl.textContent = weapon().name;
   let h = ""; for (let i = 0; i < player.maxLife; i++) h += `<div class="pip${i < player.life ? "" : " off"}"></div>`;
   pipsEl.innerHTML = h;
+  document.documentElement.style.setProperty("--accent", BIOMES[curBiome].accent);
+  document.getElementById("wave").parentElement.setAttribute("data-biome", BIOMES[curBiome].name);
 }
 
 // ============================================================
@@ -697,6 +699,10 @@ function buildGround() {
   g.restore();
   g.strokeStyle = "#3a8a2a"; g.lineWidth = 2;
   for (let i = 0; i < 80; i++) { const yy = horizonY + 10 + Math.random() * (H - horizonY - 10); const sc = scaleAt(yy); const off = roadHalf(yy) + 4 + Math.random() * 30; for (const s of [-1, 1]) { const xx = W / 2 + s * off; g.beginPath(); g.moveTo(xx, yy); g.lineTo(xx + s * 2, yy - 6 * sc); g.stroke(); } }
+  // 生物群落专属地表结构
+  if (curBiome === 1) { for (let i = 0; i < 9; i++) { const yy = horizonY + 40 + Math.random() * (H - horizonY - 60); const xx = Math.random() * W; const sc = scaleAt(yy); const rw = (40 + Math.random() * 55) * sc; g.fillStyle = "rgba(28,46,36,0.75)"; g.beginPath(); g.ellipse(xx, yy, rw, rw * 0.35, 0, 0, Math.PI * 2); g.fill(); g.fillStyle = "rgba(130,170,140,0.22)"; g.beginPath(); g.ellipse(xx, yy - 1, rw * 0.6, rw * 0.2, 0, 0, Math.PI * 2); g.fill(); } }
+  else if (curBiome === 2) { for (let i = 0; i < 7; i++) { const yy = horizonY + 60 + Math.random() * (H - horizonY - 80); const xx = Math.random() * W; const sc = scaleAt(yy); g.fillStyle = "#6a6458"; g.fillRect(xx - 11 * sc, yy - 64 * sc, 22 * sc, 64 * sc); g.fillStyle = "#7a7468"; g.fillRect(xx - 15 * sc, yy - 70 * sc, 30 * sc, 9 * sc); g.fillStyle = "rgba(0,0,0,0.3)"; g.fillRect(xx - 11 * sc, yy - 42 * sc, 22 * sc, 4 * sc); } }
+  else if (curBiome === 3) { for (let i = 0; i < 16; i++) { const yy = horizonY + 20 + Math.random() * (H - horizonY - 20); const xx = Math.random() * W; const sc = scaleAt(yy); const len = (30 + Math.random() * 65) * sc; g.strokeStyle = "#ff5a2a"; g.lineWidth = 3 * sc; g.shadowBlur = 12; g.shadowColor = "#ff7a2a"; g.beginPath(); g.moveTo(xx, yy); g.lineTo(xx + len, yy + len * 0.1); g.stroke(); g.shadowBlur = 0; g.strokeStyle = "#ffaa3a"; g.lineWidth = 1.2 * sc; g.beginPath(); g.moveTo(xx, yy); g.lineTo(xx + len, yy + len * 0.1); g.stroke(); } }
   const props = [
     { k: "palm", x: W * 0.08, y: H * 0.50 }, { k: "palm", x: W * 0.94, y: H * 0.42 }, { k: "palm", x: W * 0.97, y: H * 0.74 }, { k: "palm", x: W * 0.04, y: H * 0.80 },
     { k: "fern", x: W * 0.22, y: H * 0.55 }, { k: "fern", x: W * 0.78, y: H * 0.68 }, { k: "fern", x: W * 0.30, y: H * 0.82 }, { k: "fern", x: W * 0.70, y: H * 0.50 },
@@ -708,7 +714,7 @@ function buildGround() {
   if (curBiome === 2) { props.push({ k: "ruin", x: W * 0.33, y: H * 0.60 }, { k: "ruin", x: W * 0.67, y: H * 0.76 }); }
   if (curBiome === 0) { props.push({ k: "palm", x: W * 0.50, y: H * 0.78 }); }
   for (const p of props) { const sc = scaleAt(p.y) * 1.0; if (p.k === "palm") drawPalm(g, p.x, p.y, sc, b.palm); else if (p.k === "fern") drawFern(g, p.x, p.y, sc); else if (p.k === "rock") drawRock(g, p.x, p.y, sc); else if (p.k === "totem") drawTotem(g, p.x, p.y, sc); else if (p.k === "banner") drawBannerProp(g, p.x, p.y, sc); else if (p.k === "deadTree") drawDeadTree(g, p.x, p.y, sc); else if (p.k === "ruin") drawRuin(g, p.x, p.y, sc); }
-  for (let i = 0; i < 10; i++) { const t = i / 9; const y = horizonY + 50 + Math.pow(t, 1.5) * (H - horizonY - 90); const sc = scaleAt(y) * 1.0 + 0.15; const off = roadHalf(y) + 30 * sc; drawPalm(g, W / 2 - off, y, sc, b.palm); drawPalm(g, W / 2 + off, y, sc, b.palm); }
+  for (let i = 0; i < 10; i++) { const t = i / 9; const y = horizonY + 50 + Math.pow(t, 1.5) * (H - horizonY - 90); const sc = scaleAt(y) * 1.0 + 0.15; const off = roadHalf(y) + 30 * sc; if (curBiome === 0) { drawPalm(g, W / 2 - off, y, sc, b.palm); drawPalm(g, W / 2 + off, y, sc, b.palm); } else if (curBiome === 1) { drawDeadTree(g, W / 2 - off, y, sc); drawDeadTree(g, W / 2 + off, y, sc); } else { drawRock(g, W / 2 - off, y, sc); drawRock(g, W / 2 + off, y, sc); } }
   g.strokeStyle = "rgba(255,210,80,0.8)"; g.lineWidth = 3; g.setLineDash([18, 12]); g.beginPath(); g.moveTo(0, coreY); g.lineTo(W, coreY); g.stroke(); g.setLineDash([]);
   g.fillStyle = "rgba(255,225,120,0.9)"; g.font = "800 13px Segoe UI"; g.textAlign = "left"; g.fillText("防线", 14, coreY - 8);
 }
@@ -811,6 +817,90 @@ function drawVehicle(x, y, sc, veh) {
 }
 
 // ============================================================
+//  Boss 专属绘制（4 种完全不同体型）
+// ============================================================
+function drawBossChief(e, R, sc) {
+  const t = e.anim; const sh = Math.sin(t * 0.8) * 2.6 * sc;
+  ctx.save(); ctx.translate(e.x, e.y);
+  if (e.leaping) ctx.globalAlpha = 0.35;
+  ctx.fillStyle = "#5a3a1e"; rr(ctx, -R * 0.5, -R * 0.7 + sh, R * 0.34, R * 0.8, R * 0.1); ctx.fill(); rr(ctx, R * 0.16, -R * 0.7 - sh, R * 0.34, R * 0.8, R * 0.1); ctx.fill();
+  ctx.fillStyle = "#6a4a22"; ctx.beginPath(); ctx.moveTo(-R * 0.7, -R * 0.8); ctx.lineTo(R * 0.7, -R * 0.8); ctx.lineTo(R * 0.55, -R * 0.2); ctx.lineTo(-R * 0.55, -R * 0.2); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = e.skin; ctx.beginPath(); ctx.moveTo(-R * 0.82, -R * 2.0); ctx.lineTo(R * 0.82, -R * 2.0); ctx.lineTo(R * 0.62, -R * 0.8); ctx.lineTo(-R * 0.62, -R * 0.8); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = "#c0392b"; ctx.fillRect(-R * 0.42, -R * 1.65, R * 0.26, R * 0.12); ctx.fillRect(R * 0.16, -R * 1.45, R * 0.26, R * 0.12);
+  ctx.fillStyle = "#e8e4d4"; for (let i = -3; i <= 3; i++) ctx.fillRect(i * R * 0.16 - R * 0.04, -R * 0.98, R * 0.08, R * 0.14);
+  const aa = 0.5 + Math.sin(t * 0.8) * 0.15;
+  ctx.fillStyle = e.skin;
+  ctx.save(); ctx.translate(-R * 0.72, -R * 1.9); ctx.rotate(aa); rr(ctx, -R * 0.17, -R * 0.05, R * 0.34, R * 1.05, R * 0.13); ctx.fill();
+  ctx.fillStyle = "#6a4a2a"; ctx.fillRect(-R * 0.06, R * 0.95, R * 0.12, R * 1.6); ctx.fillStyle = "#caa030"; ctx.beginPath(); ctx.arc(0, R * 2.55, R * 0.24, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+  ctx.fillStyle = e.skin; ctx.save(); ctx.translate(R * 0.72, -R * 1.9); ctx.rotate(-aa - 0.2); rr(ctx, -R * 0.17, -R * 0.05, R * 0.34, R * 1.05, R * 0.13); ctx.fill(); ctx.restore();
+  ctx.fillStyle = e.skin; ctx.beginPath(); ctx.arc(0, -R * 2.22, R * 0.54, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = "#c0392b"; for (let i = -3; i <= 3; i++) { const a = -Math.PI / 2 + i * 0.2; ctx.save(); ctx.translate(0, -R * 2.22); ctx.rotate(a); ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(-R * 0.05, -R * 0.95); ctx.lineTo(R * 0.05, -R * 0.95); ctx.fill(); ctx.restore(); }
+  ctx.fillStyle = "#ffd040"; ctx.fillRect(-R * 0.32, -R * 2.38, R * 0.64, R * 0.11);
+  ctx.fillStyle = "#1a0a04"; ctx.fillRect(-R * 0.24, -R * 2.2, R * 0.15, R * 0.1); ctx.fillRect(R * 0.09, -R * 2.2, R * 0.15, R * 0.1);
+  ctx.fillStyle = "#ffd040"; ctx.fillRect(-R * 0.22, -R * 2.18, R * 0.07, R * 0.07); ctx.fillRect(R * 0.15, -R * 2.18, R * 0.07, R * 0.07);
+  ctx.fillStyle = "#1a0608"; rr(ctx, -R * 0.15, -R * 1.98, R * 0.3, R * 0.1, R * 0.04); ctx.fill();
+  if (e.phase2) { ctx.fillStyle = "rgba(255,40,20,0.2)"; ctx.beginPath(); ctx.arc(0, -R * 1.3, R * 1.4, 0, Math.PI * 2); ctx.fill(); }
+  ctx.restore();
+}
+function drawBossApe(e, R, sc) {
+  const t = e.anim; const sw = Math.sin(t * 0.7) * 3 * sc;
+  ctx.save(); ctx.translate(e.x, e.y);
+  if (e.leaping) ctx.globalAlpha = 0.35;
+  ctx.fillStyle = "#3a2a1a"; rr(ctx, -R * 0.42, -R * 0.5 + sw, R * 0.32, R * 0.5, R * 0.1); ctx.fill(); rr(ctx, R * 0.1, -R * 0.5 - sw, R * 0.32, R * 0.5, R * 0.1); ctx.fill();
+  ctx.fillStyle = e.skin; ctx.beginPath(); ctx.ellipse(0, -R * 1.0, R * 1.05, R * 0.95, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = "#6a4a2a"; ctx.beginPath(); ctx.ellipse(0, -R * 0.9, R * 0.5, R * 0.55, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = "#c0392b"; ctx.fillRect(-R * 0.4, -R * 1.35, R * 0.22, R * 0.1);
+  ctx.fillStyle = e.skin;
+  ctx.save(); ctx.translate(-R * 0.98, -R * 1.2); ctx.rotate(0.16 + sw * 0.012); rr(ctx, -R * 0.2, 0, R * 0.42, R * 1.45, R * 0.16); ctx.fill();
+  ctx.fillStyle = "#2a1a0a"; ctx.beginPath(); ctx.arc(0, R * 1.45, R * 0.3, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+  ctx.fillStyle = e.skin;
+  ctx.save(); ctx.translate(R * 0.98, -R * 1.2); ctx.rotate(-0.16 - sw * 0.012); rr(ctx, -R * 0.2, 0, R * 0.42, R * 1.45, R * 0.16); ctx.fill();
+  ctx.fillStyle = "#2a1a0a"; ctx.beginPath(); ctx.arc(0, R * 1.45, R * 0.3, 0, Math.PI * 2); ctx.fill(); ctx.restore();
+  ctx.fillStyle = e.skin; ctx.beginPath(); ctx.arc(0, -R * 1.72, R * 0.48, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = "#2a1a0a"; ctx.beginPath(); ctx.arc(0, -R * 1.72, R * 0.6, Math.PI * 1.1, Math.PI * 1.9); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = "#3a2a1a"; for (let i = -2; i <= 2; i++) { ctx.beginPath(); ctx.moveTo(i * R * 0.2, -R * 2.3); ctx.lineTo(i * R * 0.2 + R * 0.08, -R * 1.92); ctx.lineTo(i * R * 0.2 - R * 0.08, -R * 1.92); ctx.fill(); }
+  ctx.fillStyle = "#2a1a0a"; ctx.fillRect(-R * 0.42, -R * 1.8, R * 0.84, R * 0.09);
+  ctx.fillStyle = "#ff3a2a"; ctx.fillRect(-R * 0.26, -R * 1.74, R * 0.13, R * 0.09); ctx.fillRect(R * 0.13, -R * 1.74, R * 0.13, R * 0.09);
+  ctx.fillStyle = "#1a0608"; rr(ctx, -R * 0.15, -R * 1.56, R * 0.3, R * 0.1, R * 0.04); ctx.fill();
+  if (e.phase2) { ctx.fillStyle = "rgba(255,40,20,0.22)"; ctx.beginPath(); ctx.arc(0, -R * 1.1, R * 1.5, 0, Math.PI * 2); ctx.fill(); }
+  ctx.restore();
+}
+function drawBossVoodoo(e, R, sc) {
+  const t = e.anim; const fl = Math.sin(t * 1.2) * 4 * sc;
+  const pulse = 0.5 + 0.5 * Math.sin(performance.now() * 0.005);
+  ctx.save(); ctx.translate(e.x, e.y);
+  if (e.leaping) ctx.globalAlpha = 0.35;
+  ctx.fillStyle = "rgba(40,60,40,0.6)"; ctx.beginPath(); ctx.ellipse(0, 0, R * 0.7, R * 0.3, 0, 0, Math.PI * 2); ctx.fill();
+  for (let i = 0; i < 5; i++) { ctx.fillStyle = "rgba(60,90,60,0.4)"; ctx.beginPath(); ctx.arc((i - 2) * R * 0.25, fl * 0.3, R * 0.18, 0, Math.PI * 2); ctx.fill(); }
+  ctx.fillStyle = e.skin; ctx.beginPath(); ctx.moveTo(-R * 0.16, -R * 2.25); ctx.lineTo(R * 0.16, -R * 2.25); ctx.lineTo(R * 0.58, 0); for (let i = 0; i < 4; i++) ctx.lineTo(R * 0.58 - i * R * 0.16, -R * 0.08 - (i % 2) * R * 0.16); ctx.lineTo(-R * 0.58, 0); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = "#2a4a2a"; ctx.fillRect(-R * 0.05, -R * 2.0, R * 0.1, R * 1.85);
+  ctx.fillStyle = e.skin; ctx.save(); ctx.translate(-R * 0.32, -R * 2.0); ctx.rotate(0.2); rr(ctx, -R * 0.07, 0, R * 0.14, R * 1.3, R * 0.05); ctx.fill(); ctx.restore();
+  ctx.save(); ctx.translate(R * 0.42, -R * 2.0); ctx.rotate(-0.1); ctx.fillStyle = "#3a4a2a"; ctx.fillRect(-R * 0.05, -R * 0.2, R * 0.1, R * 1.85); ctx.fillStyle = "#7aff8a"; ctx.shadowBlur = 16; ctx.shadowColor = "#7aff8a"; ctx.beginPath(); ctx.arc(0, -R * 0.38, R * 0.26, 0, Math.PI * 2); ctx.fill(); ctx.shadowBlur = 0; ctx.restore();
+  ctx.strokeStyle = `rgba(120,255,140,${0.3 + pulse * 0.3})`; ctx.lineWidth = 2.5; ctx.beginPath(); ctx.arc(0, -R * 1.3, R * 1.2, 0, Math.PI * 2); ctx.stroke();
+  ctx.fillStyle = "#e8e4d4"; ctx.beginPath(); ctx.arc(0, -R * 2.45, R * 0.42, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = "#1a0a04"; ctx.beginPath(); ctx.arc(0, -R * 2.45, R * 0.45, Math.PI * 1.1, Math.PI * 1.9); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = "#7aff8a"; ctx.shadowBlur = 10; ctx.shadowColor = "#7aff8a"; ctx.fillRect(-R * 0.2, -R * 2.5, R * 0.12, R * 0.08); ctx.fillRect(R * 0.08, -R * 2.5, R * 0.12, R * 0.08); ctx.shadowBlur = 0;
+  ctx.fillStyle = "#1a0608"; ctx.fillRect(-R * 0.08, -R * 2.32, R * 0.16, R * 0.03);
+  if (e.phase2) { ctx.fillStyle = "rgba(60,255,90,0.18)"; ctx.beginPath(); ctx.arc(0, -R * 1.4, R * 1.6, 0, Math.PI * 2); ctx.fill(); }
+  ctx.restore();
+}
+function drawBossSerpent(e, R, sc) {
+  if (e.seg) { for (let i = e.seg.length - 1; i >= 0; i--) { const s = e.seg[i]; const sr = R * (0.6 - i * 0.045); ctx.fillStyle = (i % 2) ? e.skin : "#2a4a2a"; ctx.beginPath(); ctx.arc(s.x, s.y, Math.max(5, sr), 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = "#ffd040"; ctx.beginPath(); ctx.arc(s.x, s.y, Math.max(2, sr * 0.3), 0, Math.PI * 2); ctx.fill(); } }
+  ctx.save(); ctx.translate(e.x, e.y);
+  if (e.leaping) ctx.globalAlpha = 0.35;
+  ctx.fillStyle = "#2a4a2a"; ctx.beginPath(); ctx.ellipse(0, -R * 1.3, R * 0.95, R * 0.62, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = e.skin; ctx.beginPath(); ctx.ellipse(0, -R * 1.3, R * 0.78, R * 0.5, 0, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = "#ffd040"; ctx.beginPath(); ctx.arc(-R * 0.42, -R * 1.3, R * 0.13, 0, Math.PI * 2); ctx.fill(); ctx.beginPath(); ctx.arc(R * 0.42, -R * 1.3, R * 0.13, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = "#1a0a04"; ctx.beginPath(); ctx.arc(-R * 0.42, -R * 1.3, R * 0.05, 0, Math.PI * 2); ctx.fill(); ctx.beginPath(); ctx.arc(R * 0.42, -R * 1.3, R * 0.05, 0, Math.PI * 2); ctx.fill();
+  ctx.fillStyle = e.skin; ctx.beginPath(); ctx.moveTo(0, -R * 2.35); ctx.lineTo(R * 0.42, -R * 1.8); ctx.lineTo(0, -R * 1.4); ctx.lineTo(-R * 0.42, -R * 1.8); ctx.closePath(); ctx.fill();
+  ctx.fillStyle = "#ffd040"; ctx.shadowBlur = 8; ctx.shadowColor = "#ffd040"; ctx.fillRect(-R * 0.24, -R * 1.98, R * 0.13, R * 0.08); ctx.fillRect(R * 0.11, -R * 1.98, R * 0.13, R * 0.08); ctx.shadowBlur = 0;
+  ctx.fillStyle = "#ff3a2a"; ctx.beginPath(); ctx.moveTo(-R * 0.1, -R * 1.5); ctx.lineTo(0, -R * 1.3); ctx.lineTo(R * 0.1, -R * 1.5); ctx.fill();
+  ctx.strokeStyle = "#ff3a2a"; ctx.lineWidth = 1.5; ctx.beginPath(); ctx.moveTo(0, -R * 1.35); ctx.lineTo(-R * 0.09, -R * 1.12); ctx.moveTo(0, -R * 1.35); ctx.lineTo(R * 0.09, -R * 1.12); ctx.stroke();
+  if (e.phase2) { ctx.fillStyle = "rgba(255,200,40,0.16)"; ctx.beginPath(); ctx.arc(0, -R * 1.5, R * 1.5, 0, Math.PI * 2); ctx.fill(); }
+  ctx.restore();
+}
+
+// ============================================================
 //  野人绘制
 // ============================================================
 function drawSavage(e) {
@@ -820,10 +910,23 @@ function drawSavage(e) {
   // 燃烧染色
   const burning = !!e.burn;
   ctx.fillStyle = "rgba(0,0,0,0.42)"; ctx.beginPath(); ctx.ellipse(e.x, e.y + 3 * sc, R * 1.0, R * 0.34, 0, 0, Math.PI * 2); ctx.fill();
-  if (e.burrowing) { ctx.fillStyle = "rgba(60,40,20,0.6)"; ctx.beginPath(); ctx.ellipse(e.x, e.y + 4, R * 0.9, R * 0.32, 0, 0, Math.PI * 2); ctx.fill(); return; }
-  if (e.seg) { for (let i = e.seg.length - 1; i >= 0; i--) { const s = e.seg[i]; const sr = R * (0.6 - i * 0.045); ctx.fillStyle = (i % 2) ? e.skin : "#2a4a2a"; ctx.beginPath(); ctx.arc(s.x, s.y, Math.max(5, sr), 0, Math.PI * 2); ctx.fill(); } }
+  // Boss 独立体型分派
+  if (e.type === "boss") {
+    if (e.burrowing) { ctx.fillStyle = "rgba(60,40,20,0.6)"; ctx.beginPath(); ctx.ellipse(e.x, e.y + 4, R * 0.9, R * 0.32, 0, 0, Math.PI * 2); ctx.fill(); return; }
+    const bk = BOSS_KINDS[e.bossKind];
+    if (bk.serpent) drawBossSerpent(e, R, sc); else if (bk.leap) drawBossApe(e, R, sc); else if (bk.summonShaman) drawBossVoodoo(e, R, sc); else drawBossChief(e, R, sc);
+    if (e.hitFlash > 0) { ctx.save(); ctx.globalAlpha = Math.min(0.5, e.hitFlash * 5); ctx.fillStyle = "#fff"; ctx.beginPath(); ctx.arc(e.x, e.y - R * 1.3, R * 1.2, 0, Math.PI * 2); ctx.fill(); ctx.restore(); }
+    return;
+  }
+  if (e.burrowing) { return; }
+  if (e.seg) { return; }
   ctx.save(); ctx.translate(e.x, e.y);
   if (e.leaping) ctx.globalAlpha = 0.35;
+  // 按类型调整体型（宽/高/前倾）
+  const mbw = e.type === "brute" ? 1.3 : e.type === "scout" ? 0.82 : e.type === "berserker" ? 1.14 : 1.0;
+  const mbh = e.type === "brute" ? 0.9 : e.type === "scout" ? 1.1 : 1.0;
+  ctx.scale(mbw, mbh);
+  if (e.type === "berserker") ctx.rotate(-0.1);
   const t = e.anim;
   const sh = Math.sin(t * 0.8) * 2.6 * sc;
   const charging = !(e.wind > 0);
