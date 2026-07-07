@@ -162,7 +162,7 @@ const player = {
   fireTimer: 0, animTime: 0, moving: false, inv: 0, vx: 0, recoil: 0,
   buffs: { rate: 0, dmg: 0, multi: 0, pierce: 0, bspeed: 0, crit: 0, range: 0 },
   mods: { explosive: false, burn: false, homing: false, chain: false, lifesteal: false, shield: false, ricochet: false, slow: false, laser: false, mortar: false, missile: false, boomerang: false },
-  laserTimer: 1.5, laserCount: 1, laserRate: 0, mortarTimer: 2, missileTimer: 1.2, boomTimer: 1.8,
+  laserTimer: 1.5, laserCount: 1, laserRate: 0, mortarTimer: 2, missileTimer: 1.2, boomTimer: 1.8, boomCount: 1, boomRate: 0,
   revive: 0, drones: 0, dronePos: [], specs: {}, shieldT: 0, droneTimer: 0, slowT: 0
 };
 const enemies = [], bullets = [], enemyBullets = [], particles = [], floatTexts = [], decals = [], hazards = [], telegraphs = [], bolts = [], shocks = [], ambient = [], laserBeams = [], mortarShells = [], boomerangs = [];
@@ -185,7 +185,7 @@ function resetGame() {
   player.life = 1; player.maxLife = 1; player.hp = 100; player.maxHp = 100; player.fireTimer = 0; player.animTime = 0; player.inv = 3; player.vx = 0; player.recoil = 0;
   player.buffs = { rate: 0, dmg: 0, multi: 0, pierce: 0, bspeed: 0, crit: 0, range: 0 };
   player.mods = { explosive: false, burn: false, homing: false, chain: false, lifesteal: false, shield: false, ricochet: false, slow: false, laser: false, mortar: false, missile: false, boomerang: false };
-  player.laserTimer = 1.5; player.laserCount = 1; player.laserRate = 0; player.mortarTimer = 2; player.missileTimer = 1.2; player.boomTimer = 1.8; laserBeams.length = 0; mortarShells.length = 0; boomerangs.length = 0;
+  player.laserTimer = 1.5; player.laserCount = 1; player.laserRate = 0; player.mortarTimer = 2; player.missileTimer = 1.2; player.boomTimer = 1.8; player.boomCount = 1; player.boomRate = 0; laserBeams.length = 0; mortarShells.length = 0; boomerangs.length = 0;
   player.revive = 0; player.drones = 0; player.dronePos = []; player.specs = {}; player.shieldT = 0; player.droneTimer = 0; player.slowT = 0;
   // 重置武器数值（专精可能改过）
   WEAPONS[0].rate = 0.55; WEAPONS[1].dmg = 2; WEAPONS[1].spread = 0.34; WEAPONS[1].count = 7;
@@ -236,6 +236,9 @@ function buildChoices() {
   // 激光增强（拥有激光后）
   if (player.mods.laser && player.laserCount < 4) pool.push({ tag: "激光·史诗", icon: "🔆", cls: "epic", name: `激光 +1道`, desc: "同时多发射一道激光（当前" + player.laserCount + "道）", apply: () => { player.laserCount += 1; } });
   if (player.mods.laser && player.laserRate < 5) pool.push({ tag: "激光·稀有", icon: "⚡", cls: "rare", name: `激光加速 +1`, desc: "激光冷却-18%（当前Lv" + player.laserRate + "）", apply: () => { player.laserRate += 1; } });
+  // 回旋镖增强（拥有回旋镖后）
+  if (player.mods.boomerang && player.boomCount < 4) pool.push({ tag: "回旋镖·史诗", icon: "🪃", cls: "epic", name: `回旋镖 +1`, desc: "同时多抛出一把回旋镖（当前" + player.boomCount + "把）", apply: () => { player.boomCount += 1; } });
+  if (player.mods.boomerang && player.boomRate < 5) pool.push({ tag: "回旋镖·稀有", icon: "⚡", cls: "rare", name: `回旋镖加速 +1`, desc: "回旋镖出击冷却-18%（当前Lv" + player.boomRate + "）", apply: () => { player.boomRate += 1; } });
   // 武器专精
   const lvl = player.weaponLevel;
   if (SPECS[lvl] && !player.specs[lvl]) pool.push({ tag: "专精·史诗", icon: "★", cls: "epic", name: SPECS[lvl].name, desc: SPECS[lvl].desc, apply: () => { SPECS[lvl].apply(); player.specs[lvl] = true; } });
@@ -494,14 +497,24 @@ function updateMods(dt) {
       sfx.shoot();
     }
   }
-  // 回旋镖
+  // 回旋镖（自动朝最近敌人方向射出）
   if (player.mods.boomerang) {
     player.boomTimer -= dt;
-    if (player.boomTimer <= 0) { player.boomTimer = 1.8; boomerangs.push({ x: player.x, y: player.y - 40, vx: 0, vy: -480, phase: "out", t: 0, hit: new Map(), dmg: Math.max(2, pwDmg) }); }
+    if (player.boomTimer <= 0) {
+      player.boomTimer = 1.8 * Math.pow(0.82, player.boomRate);
+      let tgt = null, bd = 1e9; for (const e of enemies) { const dd = Math.hypot(e.x - player.x, e.y - (player.y - 40)); if (dd < bd) { bd = dd; tgt = e; } }
+      const base = tgt ? Math.atan2(tgt.y - (player.y - 40), tgt.x - player.x) : -Math.PI / 2;
+      const cnt = player.boomCount;
+      for (let bi = 0; bi < cnt; bi++) {
+        const off = cnt === 1 ? 0 : (bi - (cnt - 1) / 2) * 0.3;
+        const a = base + off;
+        boomerangs.push({ x: player.x, y: player.y - 40, vx: Math.cos(a) * 480, vy: Math.sin(a) * 480, phase: "out", t: 0, hit: new Map(), dmg: Math.max(2, pwDmg) });
+      }
+    }
   }
   for (let i = boomerangs.length - 1; i >= 0; i--) {
     const bk = boomerangs[i]; bk.t += dt;
-    if (bk.phase === "out") { bk.y += bk.vy * dt; bk.vy *= (1 - 0.6 * dt); if (bk.t > 0.55 || bk.y < horizonY + 30) bk.phase = "back"; }
+    if (bk.phase === "out") { bk.x += bk.vx * dt; bk.y += bk.vy * dt; bk.vx *= (1 - 0.6 * dt); bk.vy *= (1 - 0.6 * dt); if (bk.t > 0.6 || Math.hypot(bk.vx, bk.vy) < 40) bk.phase = "back"; }
     else { const a = Math.atan2(player.y - 40 - bk.y, player.x - bk.x); const sp = 520; bk.x += Math.cos(a) * sp * dt; bk.y += Math.sin(a) * sp * dt; if (Math.hypot(bk.x - player.x, bk.y - (player.y - 40)) < 30) { boomerangs.splice(i, 1); continue; } }
     // 命中
     for (const e of enemies) { if (e.hp <= 0) continue; if (Math.hypot(e.x - bk.x, e.y - bk.y) < e.r + 14) { const last = bk.hit.get(e) || -1; if (bk.t - last > 0.3) { bk.hit.set(e, bk.t); e.hp -= bk.dmg; e.hitFlash = 0.1; burst(bk.x, bk.y, "#c08aff", 4); } } }
