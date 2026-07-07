@@ -484,7 +484,7 @@ function updateMods(dt) {
     if (player.mortarTimer <= 0) {
       player.mortarTimer = 2.0;
       let tgt = null, bd = -1; for (const e of enemies) { const dd = Math.hypot(e.x - player.x, e.y - player.y); if (dd > bd) { bd = dd; tgt = e; } }
-      if (tgt) { hazards.push({ x: tgt.x, y: tgt.y, r: 64, timer: 0.85, max: 0.85 }); mortarShells.push({ x: tgt.x, y: horizonY - 120, ty: tgt.y, t: 0.85, max: 0.85 }); sfx.throw(); }
+      if (tgt) { const mdmg = 12 + pwDmg * 4 + wave * 3; hazards.push({ x: tgt.x, y: tgt.y, r: 64, timer: 0.85, max: 0.85, kind: "mortar", dmg: mdmg }); mortarShells.push({ x: tgt.x, y: horizonY - 120, ty: tgt.y, t: 0.85, max: 0.85 }); sfx.throw(); }
     }
   }
   for (let i = mortarShells.length - 1; i >= 0; i--) { const m = mortarShells[i]; m.t -= dt; const p = 1 - m.t / m.max; m.y = (horizonY - 120) + (m.ty - (horizonY - 120)) * p; if (m.t <= 0) mortarShells.splice(i, 1); }
@@ -634,6 +634,11 @@ function updateHazards(dt) {
       h.timer -= dt;
       if (Math.hypot(h.x - player.x, h.y - player.y) < h.r) { player.hp -= 24 * dt; player.slowT = Math.max(player.slowT, 0.3); if (player.hp <= 0) { player.hp = 0; if (player.inv <= 0) damagePlayer(1, h.x); } if (Math.random() < 0.2) particles.push({ x: player.x + Math.random() * 20 - 10, y: player.y - 20, vx: 0, vy: -20, r: 2, life: 0.4, max: 0.4, color: "#7aff8a" }); }
       if (h.timer <= 0) hazards.splice(i, 1);
+      continue;
+    }
+    if (h.kind === "mortar") {
+      h.timer -= dt;
+      if (h.timer <= 0) { burst(h.x, h.y, "#ff7a2a", 30); burst(h.x, h.y, "#ffd060", 18); screenShake = Math.max(screenShake, 8); sfx.kill(); tone(120, 0.2, "sawtooth", 0.2, 50); for (const e of enemies) { if (e.hp > 0 && Math.hypot(e.x - h.x, e.y - h.y) < h.r + e.r) { e.hp -= h.dmg; e.hitFlash = 0.1; } } hazards.splice(i, 1); }
       continue;
     }
     h.timer -= dt; if (h.timer <= 0) { burst(h.x, h.y, "#ff5a2a", 26); burst(h.x, h.y, "#ffd060", 14); screenShake = Math.max(screenShake, 8); sfx.kill(); tone(120, 0.2, "sawtooth", 0.2, 50); if (Math.hypot(h.x - player.x, h.y - player.y) < h.r) damagePlayer(DMG_SLAM, h.x); hazards.splice(i, 1); }
