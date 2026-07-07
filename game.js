@@ -197,7 +197,7 @@ function resetGame() {
   waveMod = baseMod(); lastModId = null; ambient.length = 0; curBiome = biomeIdx(); buildGround();
   updateHud();
 }
-function startGame() { resetGame(); state = "playing"; overlay.classList.remove("hidden", "gameover"); h1El.textContent = "皮皮突击"; messageEl.textContent = ""; startBtn.textContent = "开始作战"; lastTime = performance.now(); banner("WAVE 1", 1.4); initAudio(); syncPauseIcon(); }
+function startGame() { resetGame(); state = "playing"; overlay.classList.add("hidden"); overlay.classList.remove("gameover"); h1El.textContent = "皮皮突击"; messageEl.textContent = ""; startBtn.textContent = "开始作战"; lastTime = performance.now(); banner("WAVE 1", 1.4); initAudio(); syncPauseIcon(); }
 function gameOver() { state = "gameover"; overlay.classList.add("gameover"); overlay.classList.remove("hidden"); h1El.textContent = "GAME OVER"; startBtn.textContent = "再次尝试"; }
 const weapon = () => WEAPONS[player.weaponLevel];
 const vehicle = () => VEHICLES[player.vehicleLevel];
