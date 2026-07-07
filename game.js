@@ -7,12 +7,11 @@ const canvas = document.getElementById("game");
 const ctx = canvas.getContext("2d");
 const scoreEl = document.getElementById("score");
 const waveEl = document.getElementById("wave");
-const squadEl = document.getElementById("squad");
-const weaponEl = document.getElementById("weapon");
 const pipsEl = document.getElementById("pips");
 const overlay = document.getElementById("overlay");
 const messageEl = document.getElementById("message");
 const startBtn = document.getElementById("startBtn");
+const h1El = document.querySelector("h1");
 const upgradeEl = document.getElementById("upgrade");
 const upgradeCards = document.getElementById("upgradeCards");
 const upgradeHint = document.getElementById("upgradeHint");
@@ -127,7 +126,6 @@ const STATS = {
   multi:  { name: "多发", icon: "🎯", max: 4, desc: "每次射击多1颗子弹" },
   pierce: { name: "穿透", icon: "➹", max: 4, desc: "子弹多穿透1个敌人" },
   bspeed: { name: "弹速", icon: "»", max: 5, desc: "子弹飞行更快" },
-  mspeed: { name: "移速", icon: "👟", max: 5, desc: "移动更快" },
   crit:   { name: "暴击", icon: "✦", max: 5, desc: "暴击率+8%(2倍伤害)" },
   range:  { name: "射程", icon: "⌖", max: 3, desc: "子弹更大更远" }
 };
@@ -138,7 +136,11 @@ const MODLIST = [
   ["chain", "雷链", "⚡", "命中串击附近敌人"],
   ["lifesteal", "吸血", "🩸", "击杀概率恢复1人"],
   ["shield", "护盾", "🛡", "自动回复的吸收盾"],
-  ["ricochet", "跳弹", "↺", "命中后弹向另一敌人"]
+  ["ricochet", "跳弹", "↺", "命中后弹向另一敌人"],
+  ["laser", "激光", "🔆", "周期发射贯穿全屏的高能激光"],
+  ["mortar", "迫击炮", "💥", "周期轰炸最远敌群"],
+  ["missile", "导弹", "🚀", "周期发射追踪爆炸导弹"],
+  ["boomerang", "回旋镖", "🪃", "抛出回旋飞镖多次命中"]
 ];
 const SPECS = [
   { name: "快拔", desc: "手枪射速+50%", apply: () => { WEAPONS[0].rate *= 0.5; } },
@@ -159,11 +161,12 @@ let lastTime = 0;
 const player = {
   x: W / 2, y: playerY, speed: 380, life: 1, maxLife: 1, hp: 100, maxHp: 100, weaponLevel: 0, vehicleLevel: 0,
   fireTimer: 0, animTime: 0, moving: false, inv: 0, vx: 0, recoil: 0,
-  buffs: { rate: 0, dmg: 0, multi: 0, pierce: 0, bspeed: 0, mspeed: 0, crit: 0, range: 0 },
-  mods: { explosive: false, burn: false, homing: false, chain: false, lifesteal: false, shield: false, ricochet: false, slow: false },
-  revive: 0, drones: 0, specs: {}, shieldT: 0, droneTimer: 0, slowT: 0
+  buffs: { rate: 0, dmg: 0, multi: 0, pierce: 0, bspeed: 0, crit: 0, range: 0 },
+  mods: { explosive: false, burn: false, homing: false, chain: false, lifesteal: false, shield: false, ricochet: false, slow: false, laser: false, mortar: false, missile: false, boomerang: false },
+  laserTimer: 1.5, mortarTimer: 2, missileTimer: 1.2, boomTimer: 1.8,
+  revive: 0, drones: 0, dronePos: [], specs: {}, shieldT: 0, droneTimer: 0, slowT: 0
 };
-const enemies = [], bullets = [], enemyBullets = [], particles = [], floatTexts = [], decals = [], hazards = [], telegraphs = [], bolts = [], shocks = [], ambient = [];
+const enemies = [], bullets = [], enemyBullets = [], particles = [], floatTexts = [], decals = [], hazards = [], telegraphs = [], bolts = [], shocks = [], ambient = [], laserBeams = [], mortarShells = [], boomerangs = [];
 let score = 0, wave = 1, kills = 0, killTarget = 12, upgradesDone = 0, bossesDefeated = 0;
 const upgradePerBoss = 3;
 let bossPending = false, bossActive = false, spawnTimer = 0, screenShake = 0;
@@ -181,9 +184,10 @@ function resetGame() {
   enemies.length = 0; bullets.length = 0; enemyBullets.length = 0; particles.length = 0; floatTexts.length = 0; decals.length = 0; hazards.length = 0; telegraphs.length = 0; bolts.length = 0; shocks.length = 0;
   player.x = W / 2; player.y = playerY; player.weaponLevel = 0; player.vehicleLevel = 0;
   player.life = 1; player.maxLife = 1; player.hp = 100; player.maxHp = 100; player.fireTimer = 0; player.animTime = 0; player.inv = 3; player.vx = 0; player.recoil = 0;
-  player.buffs = { rate: 0, dmg: 0, multi: 0, pierce: 0, bspeed: 0, mspeed: 0, crit: 0, range: 0 };
-  player.mods = { explosive: false, burn: false, homing: false, chain: false, lifesteal: false, shield: false, ricochet: false, slow: false };
-  player.revive = 0; player.drones = 0; player.specs = {}; player.shieldT = 0; player.droneTimer = 0; player.slowT = 0;
+  player.buffs = { rate: 0, dmg: 0, multi: 0, pierce: 0, bspeed: 0, crit: 0, range: 0 };
+  player.mods = { explosive: false, burn: false, homing: false, chain: false, lifesteal: false, shield: false, ricochet: false, slow: false, laser: false, mortar: false, missile: false, boomerang: false };
+  player.laserTimer = 1.5; player.mortarTimer = 2; player.missileTimer = 1.2; player.boomTimer = 1.8; laserBeams.length = 0; mortarShells.length = 0; boomerangs.length = 0;
+  player.revive = 0; player.drones = 0; player.dronePos = []; player.specs = {}; player.shieldT = 0; player.droneTimer = 0; player.slowT = 0;
   // 重置武器数值（专精可能改过）
   WEAPONS[0].rate = 0.55; WEAPONS[1].dmg = 2; WEAPONS[1].spread = 0.34; WEAPONS[1].count = 7;
   WEAPONS[2].pierce = 1; WEAPONS[3].count = 1; WEAPONS[5].count = 2; WEAPONS[5].spread = 0.08;
@@ -193,22 +197,21 @@ function resetGame() {
   waveMod = baseMod(); lastModId = null; ambient.length = 0; curBiome = biomeIdx(); buildGround();
   updateHud();
 }
-function startGame() { resetGame(); state = "playing"; overlay.classList.add("hidden"); lastTime = performance.now(); banner("WAVE 1", 1.4); initAudio(); syncPauseIcon(); }
-function gameOver() { state = "gameover"; messageEl.innerHTML = `阵地失守！<br>最终得分 <b style="color:#ffe14a">${score}</b>　撑到第 ${wave} 波`; startBtn.textContent = "继续战斗"; overlay.classList.remove("hidden"); }
+function startGame() { resetGame(); state = "playing"; overlay.classList.remove("hidden", "gameover"); h1El.textContent = "皮皮突击"; messageEl.textContent = ""; startBtn.textContent = "开始作战"; lastTime = performance.now(); banner("WAVE 1", 1.4); initAudio(); syncPauseIcon(); }
+function gameOver() { state = "gameover"; overlay.classList.add("gameover"); overlay.classList.remove("hidden"); h1El.textContent = "GAME OVER"; startBtn.textContent = "再次尝试"; }
 const weapon = () => WEAPONS[player.weaponLevel];
 const vehicle = () => VEHICLES[player.vehicleLevel];
 function effWeapon() {
   const w = WEAPONS[player.weaponLevel], b = player.buffs;
   return { dmg: w.dmg + b.dmg, rate: w.rate * Math.pow(0.92, b.rate), count: w.count + b.multi, pierce: w.pierce + b.pierce, speed: w.speed * Math.pow(1.12, b.bspeed), spread: w.spread, color: w.color, size: w.size * (1 + b.range * 0.15), kind: w.kind };
 }
-function moveMul() { return vehicle().speedMul * Math.pow(1.1, player.buffs.mspeed) * (player.slowT > 0 ? 0.5 : 1); }
+function moveMul() { return vehicle().speedMul * (player.slowT > 0 ? 0.5 : 1); }
 
 function updateHud() {
-  scoreEl.textContent = score; waveEl.textContent = wave; squadEl.textContent = player.life; weaponEl.textContent = weapon().name;
-  let h = ""; for (let i = 0; i < player.maxLife; i++) h += `<div class="pip${i < player.life ? "" : " off"}"></div>`;
+  scoreEl.textContent = score; waveEl.textContent = wave;
+  let h = ""; for (let i = 0; i < player.life; i++) h += `<div class="pip"></div>`;
   pipsEl.innerHTML = h;
   document.documentElement.style.setProperty("--accent", BIOMES[curBiome].accent);
-  document.getElementById("wave").parentElement.setAttribute("data-biome", BIOMES[curBiome].name);
 }
 
 // ============================================================
@@ -216,8 +219,8 @@ function updateHud() {
 // ============================================================
 function buildChoices() {
   const pool = [];
-  if (player.weaponLevel < WEAPONS.length - 1) { const nw = WEAPONS[player.weaponLevel + 1]; pool.push({ tag: "武器", icon: "🔫", cls: "common", name: nw.name, desc: "换更强武器，提升伤害与射速。", apply: () => { player.weaponLevel += 1; } }); }
-  if (player.vehicleLevel < VEHICLES.length - 1) { const nv = VEHICLES[player.vehicleLevel + 1]; pool.push({ tag: "载具", icon: "🛻", cls: "common", name: nv.name, desc: "换更快载具，移动更灵活。", apply: () => { player.vehicleLevel += 1; } }); }
+  if (player.weaponLevel < WEAPONS.length - 1) { const nw = WEAPONS[player.weaponLevel + 1]; pool.push({ tag: "武器·稀有", icon: "🔫", cls: "rare", name: nw.name, desc: "换更强武器，提升伤害与射速。", apply: () => { player.weaponLevel += 1; } }); }
+  if (player.vehicleLevel < VEHICLES.length - 1) { const nv = VEHICLES[player.vehicleLevel + 1]; pool.push({ tag: "载具·稀有", icon: "🛻", cls: "rare", name: nv.name, desc: "换更快载具，移动更灵活。", apply: () => { player.vehicleLevel += 1; } }); }
   if (player.life < 8) pool.push({ tag: "扩编", icon: "🧑‍🤝‍🧑", cls: "common", name: "扩编 +1人", desc: "生命+1，多一名并肩枪手。", apply: () => { player.maxLife += 1; player.life += 1; } });
   // 属性
   for (const id in STATS) {
@@ -253,7 +256,7 @@ function applyChoice(o) {
   if (upgradesDone % upgradePerBoss === 0) bossPending = true;
   if (player.life > player.maxLife) player.life = player.maxLife;
   waveMod = rollMod();
-  banner("词缀: " + waveMod.name, 1.4, "#b08aff");
+  banner("随机事件: " + waveMod.name, 1.4, "#b08aff");
   upgradeEl.classList.add("hidden"); updateHud(); state = "playing"; lastTime = performance.now();
   burst(player.x, player.y - 30, "#7afa55", 26);
 }
@@ -406,6 +409,7 @@ function update(dt) {
 
   movePlayer(dt);
   updateDrones(dt);
+  updateMods(dt);
   player.fireTimer -= dt;
   if (player.fireTimer <= 0) { fire(); player.fireTimer = effWeapon().rate; }
 
@@ -452,18 +456,75 @@ function movePlayer(dt) {
   player.vx = player.vx * 0.6 + (player.x - ox) / Math.max(dt, 0.001) * 0.4;
   if (player.moving && Math.random() < 0.4) particles.push({ x: player.x + (Math.random() - 0.5) * 18, y: player.y + 4, vx: (Math.random() - 0.5) * 24, vy: -12 - Math.random() * 22, r: 1.5 + Math.random() * 1.5, life: 0.3 + Math.random() * 0.2, max: 0.5, color: "rgba(180,160,120,0.5)" });
 }
+function updateMods(dt) {
+  const pwDmg = WEAPONS[player.weaponLevel].dmg + player.buffs.dmg;
+  // 激光
+  if (player.mods.laser) {
+    player.laserTimer -= dt;
+    if (player.laserTimer <= 0) {
+      player.laserTimer = 1.5;
+      laserBeams.push({ x: player.x, y0: player.y - 50, life: 0.16, max: 0.16 });
+      const ldmg = 8 + pwDmg * 3 + wave * 2;
+      for (const e of enemies) { if (e.hp > 0 && Math.abs(e.x - player.x) < 32 && e.y < player.y) { e.hp -= ldmg; e.hitFlash = 0.1; } }
+      sfx.shoot(); screenShake = Math.max(screenShake, 4);
+    }
+  }
+  for (let i = laserBeams.length - 1; i >= 0; i--) { laserBeams[i].life -= dt; if (laserBeams[i].life <= 0) laserBeams.splice(i, 1); }
+  // 迫击炮
+  if (player.mods.mortar) {
+    player.mortarTimer -= dt;
+    if (player.mortarTimer <= 0) {
+      player.mortarTimer = 2.0;
+      let tgt = null, bd = -1; for (const e of enemies) { const dd = Math.hypot(e.x - player.x, e.y - player.y); if (dd > bd) { bd = dd; tgt = e; } }
+      if (tgt) { hazards.push({ x: tgt.x, y: tgt.y, r: 64, timer: 0.85, max: 0.85 }); mortarShells.push({ x: tgt.x, y: horizonY - 120, ty: tgt.y, t: 0.85, max: 0.85 }); sfx.throw(); }
+    }
+  }
+  for (let i = mortarShells.length - 1; i >= 0; i--) { const m = mortarShells[i]; m.t -= dt; const p = 1 - m.t / m.max; m.y = (horizonY - 120) + (m.ty - (horizonY - 120)) * p; if (m.t <= 0) mortarShells.splice(i, 1); }
+  // 导弹
+  if (player.mods.missile) {
+    player.missileTimer -= dt;
+    if (player.missileTimer <= 0) {
+      player.missileTimer = 1.2;
+      bullets.push({ x: player.x + (Math.random() - 0.5) * 20, y: player.y - 50, vx: (Math.random() - 0.5) * 60, vy: -260, r: 6, dmg: Math.max(3, pwDmg * 2), color: "#ff7a3d", pierce: 0, hit: new Set(), kind: "missile", homing: true, explosive: true, crit: false });
+      sfx.shoot();
+    }
+  }
+  // 回旋镖
+  if (player.mods.boomerang) {
+    player.boomTimer -= dt;
+    if (player.boomTimer <= 0) { player.boomTimer = 1.8; boomerangs.push({ x: player.x, y: player.y - 40, vx: 0, vy: -480, phase: "out", t: 0, hit: new Map(), dmg: Math.max(2, pwDmg) }); }
+  }
+  for (let i = boomerangs.length - 1; i >= 0; i--) {
+    const bk = boomerangs[i]; bk.t += dt;
+    if (bk.phase === "out") { bk.y += bk.vy * dt; bk.vy *= (1 - 0.6 * dt); if (bk.t > 0.55 || bk.y < horizonY + 30) bk.phase = "back"; }
+    else { const a = Math.atan2(player.y - 40 - bk.y, player.x - bk.x); const sp = 520; bk.x += Math.cos(a) * sp * dt; bk.y += Math.sin(a) * sp * dt; if (Math.hypot(bk.x - player.x, bk.y - (player.y - 40)) < 30) { boomerangs.splice(i, 1); continue; } }
+    // 命中
+    for (const e of enemies) { if (e.hp <= 0) continue; if (Math.hypot(e.x - bk.x, e.y - bk.y) < e.r + 14) { const last = bk.hit.get(e) || -1; if (bk.t - last > 0.3) { bk.hit.set(e, bk.t); e.hp -= bk.dmg; e.hitFlash = 0.1; burst(bk.x, bk.y, "#c08aff", 4); } } }
+  }
+}
 function updateDrones(dt) {
   if (player.drones <= 0) return;
+  while (player.dronePos.length < player.drones) player.dronePos.push({ x: player.x, y: player.y - 30 });
+  if (player.dronePos.length > player.drones) player.dronePos.length = player.drones;
   player.droneTimer -= dt;
   if (player.droneTimer <= 0) {
     player.droneTimer = 0.45;
     const w = effWeapon();
     for (let d = 0; d < player.drones; d++) {
-      const ang = performance.now() * 0.001 + d * (Math.PI * 2 / player.drones);
-      const dx = player.x + Math.cos(ang) * 46, dy = player.y - 30 + Math.sin(ang) * 30;
-      let tgt = null, bd = 1e9; for (const e of enemies) { const dd = Math.hypot(e.x - dx, e.y - dy); if (dd < bd) { bd = dd; tgt = e; } }
-      if (tgt && bd < 560) { const a = Math.atan2(tgt.y - dy, tgt.x - dx); bullets.push({ x: dx, y: dy, vx: Math.cos(a) * w.speed * 0.85, vy: Math.sin(a) * w.speed * 0.85, r: Math.max(2.4, w.size * 0.8), dmg: Math.max(1, Math.round(w.dmg * 0.6)), color: "#9affb0", pierce: 0, hit: new Set(), kind: "tracer" }); sfx.shoot(); }
+      const dp = player.dronePos[d];
+      let tgt = null, bd = 1e9; for (const e of enemies) { const dd = Math.hypot(e.x - dp.x, e.y - dp.y); if (dd < bd) { bd = dd; tgt = e; } }
+      if (tgt && bd < 600) { const a = Math.atan2(tgt.y - dp.y, tgt.x - dp.x); bullets.push({ x: dp.x, y: dp.y, vx: Math.cos(a) * w.speed * 0.85, vy: Math.sin(a) * w.speed * 0.85, r: Math.max(2.4, w.size * 0.8), dmg: Math.max(1, Math.round(w.dmg * 0.6)), color: "#9affb0", pierce: 0, hit: new Set(), kind: "tracer" }); sfx.shoot(); }
     }
+  }
+  // 无人机移动：飞向最近敌人头顶，无敌人则环绕玩家
+  for (let d = 0; d < player.drones; d++) {
+    const dp = player.dronePos[d];
+    let tgt = null, bd = 1e9; for (const e of enemies) { const dd = Math.hypot(e.x - dp.x, e.y - dp.y); if (dd < bd) { bd = dd; tgt = e; } }
+    let tx, ty;
+    if (tgt && bd < 620) { tx = tgt.x; ty = tgt.y - 60; }
+    else { const ang = performance.now() * 0.001 + d * (Math.PI * 2 / player.drones); tx = player.x + Math.cos(ang) * 46; ty = player.y - 30 + Math.sin(ang) * 30; }
+    const k = 1 - Math.exp(-6 * dt);
+    dp.x += (tx - dp.x) * k; dp.y += (ty - dp.y) * k;
   }
 }
 function angleDiff(a, b) { let d = a - b; while (d > Math.PI) d -= 2 * Math.PI; while (d < -Math.PI) d += 2 * Math.PI; return d; }
@@ -747,7 +808,7 @@ function drawHaze() { const b = BIOMES[curBiome]; const g = ctx.createLinearGrad
 // ============================================================
 function drawPlayer() {
   // 护盾光环（就绪时）
-  if (player.mods.shield && player.shieldT <= 0 && player.inv <= 0) { ctx.save(); ctx.strokeStyle = "rgba(140,230,255,0.7)"; ctx.lineWidth = 2.5; ctx.shadowBlur = 12; ctx.shadowColor = "#8ee0ff"; ctx.beginPath(); ctx.arc(player.x, player.y - 24, 34, 0, Math.PI * 2); ctx.stroke(); ctx.restore(); }
+  if (player.mods.shield && player.shieldT <= 0 && player.inv <= 0) { const sr = 30 + player.life * 5; ctx.save(); ctx.strokeStyle = "rgba(140,230,255,0.7)"; ctx.lineWidth = 2.5; ctx.shadowBlur = 12; ctx.shadowColor = "#8ee0ff"; ctx.beginPath(); ctx.arc(player.x, player.y - 24, sr, 0, Math.PI * 2); ctx.stroke(); ctx.restore(); }
   drawDrones();
   const slots = squadSlots(); for (let i = 0; i < slots.length; i++) drawSurvivor(slots[i].x, slots[i].y, 0.86, i === 0, i);
   // 血条（当前人物的 HP）
@@ -763,9 +824,8 @@ function drawPlayer() {
 function drawDrones() {
   if (player.drones <= 0) return;
   for (let d = 0; d < player.drones; d++) {
-    const ang = performance.now() * 0.001 + d * (Math.PI * 2 / player.drones);
-    const dx = player.x + Math.cos(ang) * 46, dy = player.y - 30 + Math.sin(ang) * 30;
-    ctx.save(); ctx.translate(dx, dy);
+    const dp = player.dronePos[d] || { x: player.x, y: player.y - 30 };
+    ctx.save(); ctx.translate(dp.x, dp.y);
     ctx.fillStyle = "rgba(0,0,0,0.3)"; ctx.beginPath(); ctx.ellipse(0, 8, 10, 4, 0, 0, Math.PI * 2); ctx.fill();
     ctx.shadowBlur = 10; ctx.shadowColor = "#8eff8a"; ctx.fillStyle = "#9affb0"; ctx.beginPath(); ctx.arc(0, 0, 7, 0, Math.PI * 2); ctx.fill();
     ctx.shadowBlur = 0; ctx.fillStyle = "#2a4a3a"; ctx.fillRect(-2, -2, 4, 4);
@@ -988,7 +1048,17 @@ function drawSavage(e) {
 //  子弹 / 投掷物 / 粒子 / 横幅
 // ============================================================
 function drawBullets() {
-  for (const b of bullets) { ctx.save(); ctx.shadowBlur = 10; ctx.shadowColor = b.color; ctx.fillStyle = b.color; if (b.kind === "tracer") { ctx.strokeStyle = b.color; ctx.lineWidth = b.r * 1.6; ctx.beginPath(); ctx.moveTo(b.x, b.y); ctx.lineTo(b.x - b.vx * 0.014, b.y - b.vy * 0.014); ctx.stroke(); } else { ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2); ctx.fill(); } ctx.restore(); }
+  for (const b of bullets) {
+    ctx.save();
+    if (b.kind === "missile") {
+      const ang = Math.atan2(b.vy, b.vx);
+      ctx.translate(b.x, b.y); ctx.rotate(ang);
+      ctx.fillStyle = "rgba(120,120,120,0.4)"; for (let i = 0; i < 4; i++) { ctx.beginPath(); ctx.arc(-8 - i * 4, (Math.random() - 0.5) * 4, 3 - i * 0.5, 0, Math.PI * 2); ctx.fill(); }
+      ctx.shadowBlur = 12; ctx.shadowColor = "#ff7a3d"; ctx.fillStyle = "#dddddd"; ctx.fillRect(-6, -3, 12, 6); ctx.fillStyle = "#ff5a2a"; ctx.beginPath(); ctx.moveTo(6, 0); ctx.lineTo(10, -3); ctx.lineTo(10, 3); ctx.fill(); ctx.fillStyle = "#888"; ctx.fillRect(-6, 2, 3, 4); ctx.fillRect(-6, -6, 3, 4);
+      ctx.restore(); continue;
+    }
+    ctx.shadowBlur = 10; ctx.shadowColor = b.color; ctx.fillStyle = b.color; if (b.kind === "tracer") { ctx.strokeStyle = b.color; ctx.lineWidth = b.r * 1.6; ctx.beginPath(); ctx.moveTo(b.x, b.y); ctx.lineTo(b.x - b.vx * 0.014, b.y - b.vy * 0.014); ctx.stroke(); } else { ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2); ctx.fill(); } ctx.restore();
+  }
 }
 function drawEnemyBullets() {
   for (const b of enemyBullets) {
@@ -1025,6 +1095,14 @@ function drawBolts() {
     ctx.stroke();
     ctx.restore();
   }
+}
+function drawMods() {
+  // 激光光束
+  for (const l of laserBeams) { const a = l.life / l.max; ctx.save(); ctx.globalAlpha = a; ctx.globalCompositeOperation = "lighter"; const g = ctx.createLinearGradient(l.x - 20, 0, l.x + 20, 0); g.addColorStop(0, "rgba(120,220,255,0)"); g.addColorStop(0.5, "rgba(200,250,255,0.9)"); g.addColorStop(1, "rgba(120,220,255,0)"); ctx.fillStyle = g; ctx.fillRect(l.x - 20, horizonY - 10, 40, l.y0 - (horizonY - 10)); ctx.shadowBlur = 24; ctx.shadowColor = "#8ee0ff"; ctx.fillStyle = "rgba(255,255,255,0.95)"; ctx.fillRect(l.x - 2.5, horizonY - 10, 5, l.y0 - (horizonY - 10)); ctx.restore(); }
+  // 迫击炮炮弹
+  for (const m of mortarShells) { ctx.save(); ctx.fillStyle = "rgba(0,0,0,0.3)"; ctx.beginPath(); ctx.ellipse(m.x, m.ty, 8, 3, 0, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = "#3a3a3a"; ctx.beginPath(); ctx.arc(m.x, m.y, 6, 0, Math.PI * 2); ctx.fill(); ctx.fillStyle = "#666"; ctx.fillRect(m.x - 6, m.y - 2, 12, 2); ctx.restore(); }
+  // 回旋镖
+  for (const bk of boomerangs) { ctx.save(); ctx.translate(bk.x, bk.y); ctx.rotate(bk.t * 20); ctx.shadowBlur = 10; ctx.shadowColor = "#c08aff"; ctx.strokeStyle = "#e0b0ff"; ctx.lineWidth = 3; ctx.beginPath(); ctx.moveTo(-12, 0); ctx.lineTo(12, 0); ctx.moveTo(0, -12); ctx.lineTo(0, 12); ctx.stroke(); ctx.fillStyle = "#c08aff"; ctx.beginPath(); ctx.arc(0, 0, 4, 0, Math.PI * 2); ctx.fill(); ctx.restore(); }
 }
 function drawShocks() {
   for (const s of shocks) {
@@ -1098,6 +1176,7 @@ function draw() {
   drawPlayer();
   drawEnemyBullets(); drawBullets(); drawMuzzle();
   drawBolts();
+  drawMods();
   drawParticles(); drawFloats();
   drawAmbient(); drawDarkFog();
   drawBossBar(); drawCombo(); drawBanner();
