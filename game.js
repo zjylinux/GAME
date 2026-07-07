@@ -534,13 +534,14 @@ function updateDrones(dt) {
       if (tgt && bd < 600) { const a = Math.atan2(tgt.y - dp.y, tgt.x - dp.x); bullets.push({ x: dp.x, y: dp.y, vx: Math.cos(a) * w.speed * 0.85, vy: Math.sin(a) * w.speed * 0.85, r: Math.max(2.4, w.size * 0.8), dmg: Math.max(1, Math.round(w.dmg * 0.6)), color: "#9affb0", pierce: 0, hit: new Set(), kind: "tracer" }); sfx.shoot(); }
     }
   }
-  // 无人机移动：飞向最近敌人头顶，无敌人则环绕玩家
+  // 无人机移动：始终追踪最近敌人；无敌人时在前方散开巡视，不回玩家身边
   for (let d = 0; d < player.drones; d++) {
     const dp = player.dronePos[d];
     let tgt = null, bd = 1e9; for (const e of enemies) { const dd = Math.hypot(e.x - dp.x, e.y - dp.y); if (dd < bd) { bd = dd; tgt = e; } }
     let tx, ty;
-    if (tgt && bd < 620) { tx = tgt.x; ty = tgt.y - 60; }
-    else { const ang = performance.now() * 0.001 + d * (Math.PI * 2 / player.drones); tx = player.x + Math.cos(ang) * 46; ty = player.y - 30 + Math.sin(ang) * 30; }
+    if (tgt) { tx = tgt.x; ty = tgt.y - 60; }
+    else { const slot = player.drones <= 1 ? 0.5 : d / (player.drones - 1); tx = W * 0.2 + slot * W * 0.6; ty = horizonY + (H - horizonY) * 0.28; }
+    tx = Math.max(W * 0.06, Math.min(W * 0.94, tx));
     const k = 1 - Math.exp(-6 * dt);
     dp.x += (tx - dp.x) * k; dp.y += (ty - dp.y) * k;
   }
