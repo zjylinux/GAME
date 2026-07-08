@@ -237,8 +237,8 @@ function buildChoices() {
   if (player.mods.laser && player.laserCount < 4) pool.push({ tag: "激光·史诗", icon: "🔆", cls: "epic", name: `激光 +1道`, desc: "同时多发射一道激光（当前" + player.laserCount + "道）", apply: () => { player.laserCount += 1; } });
   if (player.mods.laser && player.laserRate < 5) pool.push({ tag: "激光·稀有", icon: "⚡", cls: "rare", name: `激光加速 +1`, desc: "激光冷却-18%（当前Lv" + player.laserRate + "）", apply: () => { player.laserRate += 1; } });
   // 回旋镖增强（拥有回旋镖后）
-  if (player.mods.boomerang && player.boomCount < 4) pool.push({ tag: "回旋镖·史诗", icon: "🪃", cls: "epic", name: `回旋镖 +1`, desc: "同时多抛出一把回旋镖（当前" + player.boomCount + "把）", apply: () => { player.boomCount += 1; } });
-  if (player.mods.boomerang && player.boomRate < 5) pool.push({ tag: "回旋镖·稀有", icon: "⚡", cls: "rare", name: `回旋镖加速 +1`, desc: "回旋镖出击冷却-18%（当前Lv" + player.boomRate + "）", apply: () => { player.boomRate += 1; } });
+  if (player.mods.boomerang && player.boomCount < 4) pool.push({ tag: "回旋镖·史诗", icon: "🪃", cls: "epic", name: `回旋镖 +1`, desc: "多一把环绕飞镖（当前" + player.boomCount + "把）", apply: () => { player.boomCount += 1; } });
+  if (player.mods.boomerang && player.boomRate < 5) pool.push({ tag: "回旋镖·稀有", icon: "⚡", cls: "rare", name: `回旋镖加速 +1`, desc: "环绕旋转速度提升（当前Lv" + player.boomRate + "）", apply: () => { player.boomRate += 1; } });
   // 武器专精
   const lvl = player.weaponLevel;
   if (SPECS[lvl] && !player.specs[lvl]) pool.push({ tag: "专精·史诗", icon: "★", cls: "epic", name: SPECS[lvl].name, desc: SPECS[lvl].desc, apply: () => { SPECS[lvl].apply(); player.specs[lvl] = true; } });
@@ -321,6 +321,7 @@ function squadSlots() {
   else for (let i = 0; i < n; i++) slots.push({ x: player.x + (i - (n - 1) / 2) * 48, y: player.y });
   return slots;
 }
+function squadHit(x, y, r) { for (const s of squadSlots()) { if (Math.hypot(x - s.x, y - s.y) < r) return true; } return false; }
 function fire() {
   const w = effWeapon(); const slots = squadSlots();
   const critChance = 0.08 * player.buffs.crit;
@@ -369,7 +370,7 @@ function explode(e) {
   burst(e.x, e.y, "#ff7a2a", 30); burst(e.x, e.y, "#ffd060", 18);
   decals.push({ x: e.x, y: e.y, r: 34, a: 0.5 });
   screenShake = Math.max(screenShake, 9); sfx.kill();
-  if (Math.hypot(e.x - player.x, e.y - player.y) < (e.blast || 80) + 18) damagePlayer(DMG_EXPLODE, e.x);
+  if (squadHit(e.x, e.y, (e.blast || 80) + 18)) damagePlayer(DMG_EXPLODE, e.x);
 }
 
 // ============================================================
@@ -497,28 +498,22 @@ function updateMods(dt) {
       sfx.shoot();
     }
   }
-  // 回旋镖（自动朝最近敌人方向射出）
+  // 回旋镖（持久环绕玩家）
   if (player.mods.boomerang) {
-    player.boomTimer -= dt;
-    if (player.boomTimer <= 0) {
-      player.boomTimer = 1.8 * Math.pow(0.82, player.boomRate);
-      let tgt = null, bd = 1e9; for (const e of enemies) { const dd = Math.hypot(e.x - player.x, e.y - (player.y - 40)); if (dd < bd) { bd = dd; tgt = e; } }
-      const base = tgt ? Math.atan2(tgt.y - (player.y - 40), tgt.x - player.x) : -Math.PI / 2;
-      const cnt = player.boomCount;
-      for (let bi = 0; bi < cnt; bi++) {
-        const off = cnt === 1 ? 0 : (bi - (cnt - 1) / 2) * 0.3;
-        const a = base + off;
-        boomerangs.push({ x: player.x, y: player.y - 40, vx: Math.cos(a) * 480, vy: Math.sin(a) * 480, phase: "out", t: 0, hit: new Map(), dmg: Math.max(2, pwDmg) });
-      }
+    while (boomerangs.length < player.boomCount) boomerangs.push({ ang: boomerangs.length * (Math.PI * 2 / Math.max(1, player.boomCount)), hit: new Map(), dmg: Math.max(2, pwDmg) });
+    if (boomerangs.length > player.boomCount) boomerangs.length = player.boomCount;
+    const angSpeed = 2.2 + player.boomRate * 0.5;
+    const R = 78;
+    for (let i = 0; i < boomerangs.length; i++) {
+      const bk = boomerangs[i];
+      bk.ang += angSpeed * dt;
+      bk.dmg = Math.max(2, pwDmg);
+      bk.x = player.x + Math.cos(bk.ang) * R;
+      bk.y = (player.y - 40) + Math.sin(bk.ang) * R * 0.6;
+      if (!bk.t) bk.t = 0; bk.t += dt;
+      for (const e of enemies) { if (e.hp <= 0) continue; if (Math.hypot(e.x - bk.x, e.y - bk.y) < e.r + 14) { const last = bk.hit.get(e) || -1; if (bk.t - last > 0.3) { bk.hit.set(e, bk.t); e.hp -= bk.dmg; e.hitFlash = 0.1; burst(bk.x, bk.y, "#c08aff", 4); } } }
     }
-  }
-  for (let i = boomerangs.length - 1; i >= 0; i--) {
-    const bk = boomerangs[i]; bk.t += dt;
-    if (bk.phase === "out") { bk.x += bk.vx * dt; bk.y += bk.vy * dt; bk.vx *= (1 - 0.6 * dt); bk.vy *= (1 - 0.6 * dt); if (bk.t > 0.6 || Math.hypot(bk.vx, bk.vy) < 40) bk.phase = "back"; }
-    else { const a = Math.atan2(player.y - 40 - bk.y, player.x - bk.x); const sp = 520; bk.x += Math.cos(a) * sp * dt; bk.y += Math.sin(a) * sp * dt; if (Math.hypot(bk.x - player.x, bk.y - (player.y - 40)) < 30) { boomerangs.splice(i, 1); continue; } }
-    // 命中
-    for (const e of enemies) { if (e.hp <= 0) continue; if (Math.hypot(e.x - bk.x, e.y - bk.y) < e.r + 14) { const last = bk.hit.get(e) || -1; if (bk.t - last > 0.3) { bk.hit.set(e, bk.t); e.hp -= bk.dmg; e.hitFlash = 0.1; burst(bk.x, bk.y, "#c08aff", 4); } } }
-  }
+  } else { boomerangs.length = 0; }
 }
 function updateDrones(dt) {
   if (player.drones <= 0) return;
@@ -618,7 +613,7 @@ function updateEnemies(dt) {
       if (bk.regen && e.hp < e.maxHp && !e.burrowing) { e.regenTimer -= dt; if (e.regenTimer <= 0) { e.regenTimer = 1.0; e.hp = Math.min(e.maxHp, e.hp + e.maxHp * 0.012 + 2); } }
     }
     // 自爆者接触玩家
-    if (e.blast && Math.hypot(e.x - player.x, e.y - player.y) < e.r * ENEMY_SCALE * e.baseScale + 22) { explode(e); e.hp = 0; }
+    if (e.blast && squadHit(e.x, e.y, e.r * ENEMY_SCALE * e.baseScale + 22)) { explode(e); e.hp = 0; }
     // 越过防线
     if (e.y - e.r * ENEMY_SCALE * e.baseScale >= coreY) {
       if (e.blast) explode(e); else { damagePlayer(e.type === "boss" ? DMG_BOSS : DMG_HIT, e.x); leafBurst(e.x, coreY); }
@@ -633,7 +628,7 @@ function updateHazards(dt) {
     const h = hazards[i];
     if (h.kind === "poison") {
       h.timer -= dt;
-      if (Math.hypot(h.x - player.x, h.y - player.y) < h.r) { player.hp -= 24 * dt; player.slowT = Math.max(player.slowT, 0.3); if (player.hp <= 0) { player.hp = 0; if (player.inv <= 0) damagePlayer(1, h.x); } if (Math.random() < 0.2) particles.push({ x: player.x + Math.random() * 20 - 10, y: player.y - 20, vx: 0, vy: -20, r: 2, life: 0.4, max: 0.4, color: "#7aff8a" }); }
+      if (squadHit(h.x, h.y, h.r)) { player.hp -= 24 * dt; player.slowT = Math.max(player.slowT, 0.3); if (player.hp <= 0) { player.hp = 0; if (player.inv <= 0) damagePlayer(1, h.x); } if (Math.random() < 0.2) particles.push({ x: player.x + Math.random() * 20 - 10, y: player.y - 20, vx: 0, vy: -20, r: 2, life: 0.4, max: 0.4, color: "#7aff8a" }); }
       if (h.timer <= 0) hazards.splice(i, 1);
       continue;
     }
@@ -642,11 +637,11 @@ function updateHazards(dt) {
       if (h.timer <= 0) { burst(h.x, h.y, "#ff7a2a", 30); burst(h.x, h.y, "#ffd060", 18); screenShake = Math.max(screenShake, 8); sfx.kill(); tone(120, 0.2, "sawtooth", 0.2, 50); for (const e of enemies) { if (e.hp > 0 && Math.hypot(e.x - h.x, e.y - h.y) < h.r + e.r) { e.hp -= h.dmg; e.hitFlash = 0.1; } } hazards.splice(i, 1); }
       continue;
     }
-    h.timer -= dt; if (h.timer <= 0) { burst(h.x, h.y, "#ff5a2a", 26); burst(h.x, h.y, "#ffd060", 14); screenShake = Math.max(screenShake, 8); sfx.kill(); tone(120, 0.2, "sawtooth", 0.2, 50); if (Math.hypot(h.x - player.x, h.y - player.y) < h.r) damagePlayer(DMG_SLAM, h.x); hazards.splice(i, 1); }
+    h.timer -= dt; if (h.timer <= 0) { burst(h.x, h.y, "#ff5a2a", 26); burst(h.x, h.y, "#ffd060", 14); screenShake = Math.max(screenShake, 8); sfx.kill(); tone(120, 0.2, "sawtooth", 0.2, 50); if (squadHit(h.x, h.y, h.r)) damagePlayer(DMG_SLAM, h.x); hazards.splice(i, 1); }
   }
 }
 function updateEnemyBullets(dt) {
-  for (let i = enemyBullets.length - 1; i >= 0; i--) { const b = enemyBullets[i]; b.x += b.vx * dt; b.y += b.vy * dt; b.life -= dt; if (b.life <= 0 || b.y > H + 30 || b.x < -40 || b.x > W + 40) { enemyBullets.splice(i, 1); continue; } if (player.inv <= 0 && Math.hypot(b.x - player.x, b.y - player.y) < 22) { enemyBullets.splice(i, 1); if (b.kind === "venom") { player.slowT = 1.5; damagePlayer(DMG_HIT, b.x); } else damagePlayer(DMG_HIT, b.x); } }
+  for (let i = enemyBullets.length - 1; i >= 0; i--) { const b = enemyBullets[i]; b.x += b.vx * dt; b.y += b.vy * dt; b.life -= dt; if (b.life <= 0 || b.y > H + 30 || b.x < -40 || b.x > W + 40) { enemyBullets.splice(i, 1); continue; } if (player.inv <= 0 && squadHit(b.x, b.y, 22)) { enemyBullets.splice(i, 1); if (b.kind === "venom") { player.slowT = 1.5; damagePlayer(DMG_HIT, b.x); } else damagePlayer(DMG_HIT, b.x); } }
 }
 function damagePlayer(amount, srcX) {
   if (player.inv > 0) return;
@@ -738,7 +733,7 @@ function collisions() {
   // 自爆者撞击玩家
   for (let j = enemies.length - 1; j >= 0; j--) {
     const e = enemies[j]; if (e.hp <= 0) continue; const rad = e.r * ENEMY_SCALE * e.baseScale;
-    if (Math.hypot(e.x - player.x, e.y - player.y) < rad + 20) {
+    if (squadHit(e.x, e.y, rad + 20)) {
       if (e.blast) { explode(e); e.hp = 0; continue; }
       leafBurst(e.x, e.y); e.hp = 0;
       if (e.type === "boss") bossActive = false;
@@ -832,7 +827,7 @@ function drawHaze() { const b = BIOMES[curBiome]; const g = ctx.createLinearGrad
 // ============================================================
 function drawPlayer() {
   // 护盾光环（就绪时）
-  if (player.mods.shield && player.shieldT <= 0 && player.inv <= 0) { const sr = 30 + player.life * 5; ctx.save(); ctx.strokeStyle = "rgba(140,230,255,0.7)"; ctx.lineWidth = 2.5; ctx.shadowBlur = 12; ctx.shadowColor = "#8ee0ff"; ctx.beginPath(); ctx.arc(player.x, player.y - 24, sr, 0, Math.PI * 2); ctx.stroke(); ctx.restore(); }
+  if (player.mods.shield && player.shieldT <= 0 && player.inv <= 0) { const sr = (player.life - 1) * 24 + 44; ctx.save(); ctx.strokeStyle = "rgba(140,230,255,0.7)"; ctx.lineWidth = 2.5; ctx.shadowBlur = 12; ctx.shadowColor = "#8ee0ff"; ctx.beginPath(); ctx.arc(player.x, player.y - 24, sr, 0, Math.PI * 2); ctx.stroke(); ctx.restore(); }
   drawDrones();
   const slots = squadSlots(); for (let i = 0; i < slots.length; i++) drawSurvivor(slots[i].x, slots[i].y, 0.86, i === 0, i);
   // 血条（当前人物的 HP）
